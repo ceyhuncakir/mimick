@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cannon</title>
+<style>
+:root {
+  --bg: #f5f5f7; --card: #fff; --text: #1d1d1f; --text2: #86868b; --text3: #aeaeb2;
+  --border: rgba(0,0,0,0.06); --accent: #0071e3; --accent-light: rgba(0,113,227,0.08);
+  --sidebar-w: 300px; --radius: 14px; --radius-sm: 10px;
+  --shadow: 0 2px 16px rgba(0,0,0,0.06); --shadow-lg: 0 8px 40px rgba(0,0,0,0.12);
+  --transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+  --target: #0071e3; --tool: #636366; --asset: #30d158; --finding-c: #ff453a;
+  --finding-h: #ff9f0a; --finding-m: #ffd60a; --finding-l: #30d158; --finding-i: #64d2ff;
+  --glass: rgba(255,255,255,0.72); --blur: saturate(180%) blur(20px);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", system-ui, sans-serif;
+  --mono: "SF Mono", "Fira Code", "Cascadia Code", Menlo, monospace;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+
+/* ── Top bar ─────────────────────────────────────────────────────── */
+.topbar{height:48px;display:flex;align-items:center;padding:0 20px;gap:12px;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-bottom:.5px solid var(--border);z-index:100;flex-shrink:0}
+.topbar .logo{font-size:16px;font-weight:700;letter-spacing:-.3px}.topbar .logo span{color:var(--finding-c)}
+.topbar .sep{width:1px;height:18px;background:var(--border)}
+.topbar .sub{font-size:12px;color:var(--text2);font-weight:500}
+.topbar .live-dot{width:7px;height:7px;border-radius:50%;background:var(--finding-c);margin-left:auto;animation:pulse 2s infinite}
+.topbar .live-label{font-size:11px;color:var(--text2);font-weight:500}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── Layout ──────────────────────────────────────────────────────── */
+.layout{display:flex;flex:1;overflow:hidden}
+
+/* ── Sidebar ─────────────────────────────────────────────────────── */
+.sidebar{width:var(--sidebar-w);flex-shrink:0;display:flex;flex-direction:column;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-right:.5px solid var(--border)}
+.sidebar-head{padding:16px 16px 10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text2)}
+.runs{flex:1;overflow-y:auto;padding:0 8px 8px;scrollbar-width:thin;scrollbar-color:var(--text3) transparent}
+.runs::-webkit-scrollbar{width:5px}.runs::-webkit-scrollbar-thumb{background:var(--text3);border-radius:3px}
+.rc{padding:12px 14px;margin-bottom:4px;border-radius:var(--radius-sm);cursor:pointer;transition:all var(--transition);border:1.5px solid transparent}
+.rc:hover{background:var(--accent-light)}.rc.active{background:var(--accent-light);border-color:var(--accent)}
+.rc .t{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc .m{font-size:10px;color:var(--text2);margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.rc .prompt-text{font-size:10px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:italic}
+.badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700}
+.b-f{background:rgba(255,69,58,.1);color:var(--finding-c)}.b-a{background:rgba(48,209,88,.1);color:#248a3d}.b-t{background:rgba(99,99,102,.1);color:var(--tool)}
+.b-s{background:rgba(0,113,227,.1);color:var(--accent)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:32px;text-align:center;color:var(--text2)}
+.empty h3{font-size:15px;font-weight:600;color:var(--text);margin:8px 0 4px}.empty p{font-size:12px;line-height:1.5}
+
+/* ── Main ────────────────────────────────────────────────────────── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+
+/* ── Graph ────────────────────────────────────────────────────────── */
+.graph{flex:1;position:relative;overflow:hidden;background-image:radial-gradient(circle,#d5d5da .7px,transparent .7px);background-size:20px 20px}
+.graph svg{width:100%;height:100%;display:block}
+.graph-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--text3);pointer-events:none}
+.graph-empty h3{font-size:16px;font-weight:600}.graph-empty p{font-size:12px}
+
+/* ── Graph elements ──────────────────────────────────────────────── */
+.node{cursor:pointer}.node circle{transition:filter .15s,stroke .15s}
+.node:hover circle{filter:brightness(1.12) drop-shadow(0 0 6px rgba(0,0,0,.15))}
+.node.selected circle{stroke:var(--text);stroke-width:2.5px}
+.node .icon{font-size:11px;fill:#fff;text-anchor:middle;dominant-baseline:central;pointer-events:none;font-weight:700}
+.node .lbl{font-family:var(--font);font-size:10px;font-weight:600;fill:var(--text);text-anchor:middle;pointer-events:none}
+.node.dimmed{opacity:.12}.link.dimmed{opacity:.06}
+.link{fill:none;stroke:#c7c7cc;stroke-width:1.2px}
+.link.flow{stroke:var(--accent);stroke-opacity:.25;stroke-width:1px;stroke-dasharray:4 3}
+.arrow{fill:#c7c7cc}
+
+/* ── Status indicator on nodes ────────────────────────────────────── */
+.node .status-ring{fill:none;stroke-width:2px;opacity:0;transition:opacity .3s}
+.node.running .status-ring{opacity:1;stroke:var(--accent);stroke-dasharray:4 3;animation:spin 1.5s linear infinite}
+@keyframes spin{to{stroke-dashoffset:-20}}
+
+/* ── Legend ───────────────────────────────────────────────────────── */
+.legend{position:absolute;top:12px;right:12px;background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:var(--radius-sm);padding:10px 14px;box-shadow:var(--shadow);font-size:11px;display:none}
+.legend.show{display:block}
+.li{display:flex;align-items:center;gap:6px;margin-bottom:4px}.li:last-child{margin-bottom:0}
+.ld{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* ── Zoom ────────────────────────────────────────────────────────── */
+.zc{position:absolute;bottom:16px;right:12px;display:flex;flex-direction:column;gap:3px;z-index:10}
+.zb{width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:var(--glass);backdrop-filter:blur(10px);border:.5px solid var(--border);border-radius:7px;cursor:pointer;font-size:16px;color:var(--text);transition:all var(--transition);user-select:none}
+.zb:hover{background:var(--card);box-shadow:var(--shadow)}
+
+/* ── Right panel ─────────────────────────────────────────────────── */
+.rpanel{width:0;overflow:hidden;transition:width .3s ease;background:var(--card);border-left:.5px solid var(--border);display:flex;flex-direction:column}
+.rpanel.open{width:420px}
+.rp-head{padding:16px 18px 12px;border-bottom:.5px solid var(--border);flex-shrink:0;display:flex;align-items:flex-start;gap:10px}
+.rp-head .rp-info{flex:1;min-width:0}
+.rp-head h3{font-size:14px;font-weight:700;word-break:break-all}
+.rp-type{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 7px;border-radius:4px;margin-top:4px}
+.rp-close{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:var(--bg);cursor:pointer;font-size:14px;flex-shrink:0;transition:background var(--transition)}
+.rp-close:hover{background:#e5e5ea}
+.rp-body{flex:1;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--text3) transparent}
+.rp-body::-webkit-scrollbar{width:5px}.rp-body::-webkit-scrollbar-thumb{background:var(--text3);border-radius:3px}
+.rp-section{padding:14px 18px;border-bottom:.5px solid var(--border)}
+.rp-section:last-child{border-bottom:none}
+.rp-section h4{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin-bottom:8px}
+.rp-row{font-size:12px;color:var(--text2);margin-bottom:4px;line-height:1.5}.rp-row strong{color:var(--text)}
+.rp-log{font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--text);background:var(--bg);padding:12px 14px;border-radius:8px;white-space:pre-wrap;word-break:break-all;max-height:400px;overflow-y:auto;margin-top:4px}
+.rp-log.err{color:var(--finding-c);background:rgba(255,69,58,.04)}
+
+/* ── Activity feed (bottom) ──────────────────────────────────────── */
+.activity{height:0;overflow:hidden;transition:height .3s ease;background:var(--card);border-top:.5px solid var(--border);flex-shrink:0;display:flex;flex-direction:column}
+.activity.open{height:200px}
+.act-head{display:flex;align-items:center;padding:10px 18px;gap:8px;flex-shrink:0;border-bottom:.5px solid var(--border)}
+.act-head h4{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text2)}
+.act-head .toggle{margin-left:auto;cursor:pointer;font-size:12px;color:var(--text2);padding:2px 8px;border-radius:4px;background:var(--bg)}
+.act-head .toggle:hover{background:#e5e5ea}
+.act-list{flex:1;overflow-y:auto;padding:6px 0;scrollbar-width:thin;scrollbar-color:var(--text3) transparent}
+.act-list::-webkit-scrollbar{width:5px}.act-list::-webkit-scrollbar-thumb{background:var(--text3);border-radius:3px}
+.act-item{padding:5px 18px;font-size:11px;display:flex;gap:8px;align-items:flex-start;line-height:1.5;cursor:pointer;transition:background var(--transition)}
+.act-item:hover{background:var(--accent-light)}
+.act-item .ts{color:var(--text3);font-family:var(--mono);font-size:9px;flex-shrink:0;min-width:52px;padding-top:1px}
+.act-item .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.act-item .msg{color:var(--text);flex:1;min-width:0}
+.act-item .msg .tool-name{font-weight:700;color:var(--tool)}
+.act-item .msg .reasoning{color:var(--text2);font-style:italic}
+.act-item.fail .dot{background:var(--finding-c)}.act-item.ok .dot{background:var(--asset)}.act-item.think .dot{background:var(--accent)}.act-item.finding-ev .dot{background:var(--finding-h)}
+.act-item.finding-ev .msg{font-weight:600;color:var(--finding-c)}
+
+/* ── Replay bar ─────────────────────────────────────────────────── */
+.replay-bar{display:none;align-items:center;gap:10px;padding:8px 18px;background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-bottom:.5px solid var(--border);flex-shrink:0;z-index:10}
+.replay-bar.show{display:flex}
+.replay-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:var(--bg);border:.5px solid var(--border);border-radius:7px;cursor:pointer;font-size:13px;color:var(--text);transition:all var(--transition);user-select:none;flex-shrink:0}
+.replay-btn:hover{background:var(--card);box-shadow:var(--shadow)}
+.replay-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.replay-track{flex:1;position:relative;height:24px;display:flex;align-items:center;cursor:pointer}
+.replay-track-bg{width:100%;height:4px;background:var(--bg);border-radius:2px;position:relative;overflow:hidden}
+.replay-track-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .15s ease;width:0}
+.replay-track-markers{position:absolute;inset:0;display:flex;align-items:center;pointer-events:none}
+.replay-marker{position:absolute;width:6px;height:6px;border-radius:50%;transform:translate(-50%,0);transition:background .2s}
+.replay-marker.tool-m{background:var(--tool)}.replay-marker.finding-m{background:var(--finding-c)}.replay-marker.future{background:var(--text3);opacity:.3}
+.replay-info{font-size:11px;color:var(--text2);font-family:var(--mono);min-width:60px;text-align:right;flex-shrink:0}
+.replay-speed{font-size:10px;font-weight:600;color:var(--text2);padding:3px 8px;border-radius:5px;background:var(--bg);cursor:pointer;user-select:none;flex-shrink:0;border:.5px solid var(--border)}
+.replay-speed:hover{background:var(--card);box-shadow:var(--shadow)}
+.replay-close{margin-left:4px}
+/* Node enter animation during replay */
+.node.replay-enter circle{animation:nodeAppear .4s ease-out}
+.node.replay-active circle{filter:drop-shadow(0 0 8px rgba(0,113,227,.5))!important}
+@keyframes nodeAppear{0%{r:0;opacity:0}60%{opacity:1}100%{}}
+.link.replay-enter{stroke-dasharray:1000;stroke-dashoffset:1000;animation:linkDraw .5s ease-out forwards}
+@keyframes linkDraw{to{stroke-dashoffset:0}}
+
+/* ── Agent trail ────────────────────────────────────────────────────── */
+.agent-trail{fill:none;stroke:var(--accent);stroke-width:2.5px;stroke-linecap:round;stroke-linejoin:round;opacity:.6;pointer-events:none}
+.agent-trail.animated{stroke-dasharray:8 4;animation:trailFlow 1s linear infinite}
+@keyframes trailFlow{to{stroke-dashoffset:-12}}
+.agent-trail-bg{fill:none;stroke:var(--accent);stroke-width:6px;stroke-linecap:round;stroke-linejoin:round;opacity:.08;pointer-events:none}
+.agent-cursor{pointer-events:none}
+.agent-cursor .cursor-ring{fill:none;stroke:var(--accent);stroke-width:2px;opacity:.4;animation:cursorPulse 1.5s ease-in-out infinite}
+.agent-cursor .cursor-dot{fill:var(--accent)}
+.agent-cursor .cursor-label{font-family:var(--font);font-size:8px;font-weight:700;fill:var(--accent);text-anchor:middle}
+@keyframes cursorPulse{0%,100%{r:14;opacity:.4}50%{r:20;opacity:.15}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo"><span>&#9679;</span> Cannon</div>
+  <div class="sep"></div>
+  <div class="sub">Attack Vector Map</div>
+  <div class="live-dot" id="live-dot" style="display:none"></div>
+  <div class="live-label" id="live-label" style="display:none">Live</div>
+</div>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-head">Runs</div>
+    <div class="runs" id="runs"></div>
+  </aside>
+
+  <div class="main">
+    <div class="graph" id="graph">
+      <div class="graph-empty" id="graph-empty">
+        <h3>Select a run</h3>
+        <p>Choose an assessment from the sidebar to view its attack map.</p>
+      </div>
+      <svg id="svg"></svg>
+      <div class="legend" id="legend">
+        <div class="li"><div class="ld" style="background:var(--target)"></div>Target</div>
+        <div class="li"><div class="ld" style="background:var(--tool)"></div>Tool</div>
+        <div class="li"><div class="ld" style="background:var(--asset)"></div>Asset</div>
+        <div class="li"><div class="ld" style="background:var(--finding-c)"></div>Finding</div>
+        <div class="li"><div class="ld" style="background:var(--accent);opacity:.6"></div>Agent Path</div>
+      </div>
+      <div class="zc" id="zc">
+        <div class="zb" id="zi">+</div>
+        <div class="zb" id="zo">&minus;</div>
+        <div class="zb" id="zf">&#8982;</div>
+        <div class="zb" id="zr" title="Replay" style="font-size:12px;display:none">&#9654;</div>
+      </div>
+    </div>
+    <div class="replay-bar" id="replay-bar">
+      <div class="replay-btn" id="rp-back" title="Step back">&#9664;&#9664;</div>
+      <div class="replay-btn" id="rp-play" title="Play / Pause">&#9654;</div>
+      <div class="replay-btn" id="rp-fwd" title="Step forward">&#9654;&#9654;</div>
+      <div class="replay-track" id="rp-track">
+        <div class="replay-track-bg"><div class="replay-track-fill" id="rp-fill"></div></div>
+        <div class="replay-track-markers" id="rp-markers"></div>
+      </div>
+      <div class="replay-info" id="rp-info">0 / 0</div>
+      <div class="replay-speed" id="rp-speed" title="Playback speed">1x</div>
+      <div class="replay-btn replay-close" id="rp-exit" title="Exit replay">&#10005;</div>
+    </div>
+    <div class="activity" id="activity">
+      <div class="act-head">
+        <h4>Activity</h4>
+        <div class="toggle" id="act-toggle">&darr;</div>
+      </div>
+      <div class="act-list" id="act-list"></div>
+    </div>
+  </div>
+
+  <div class="rpanel" id="rpanel">
+    <div class="rp-head" id="rp-head"></div>
+    <div class="rp-body" id="rp-body"></div>
+  </div>
+</div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+(()=>{
+"use strict";
+
+const COLORS={target:"#0071e3",tool:"#636366",asset:"#30d158",finding:"#ff453a"};
+const SEV={critical:"#ff453a",high:"#ff9f0a",medium:"#ffd60a",low:"#30d158",info:"#64d2ff"};
+const RADII={target:24,tool:17,asset:13,finding:15};
+const ICONS={target:"T",tool:"\u2699",asset:"\u25C6",finding:"!"};
+
+function nColor(d){return d.type==="finding"?SEV[d.data?.severity]||COLORS.finding:COLORS[d.type]||COLORS.asset}
+function nRadius(d){return RADII[d.type]||12}
+function nIcon(d){
+  if(d.type==="tool"){
+    const m={"httpx":"H","curl":"C","nuclei":"N","subfinder":"S","ffuf":"F","nmap":"P","katana":"K","wafw00f":"W","python_exec":"Py"};
+    return m[d.label]||"\u2699";
+  }
+  return ICONS[d.type]||"";
+}
+function esc(s){const e=document.createElement("span");e.textContent=s;return e.innerHTML}
+function trunc(s,n){return s.length>n?s.slice(0,n)+"...":s}
+function fmtTime(iso){if(!iso)return"";const d=new Date(iso);return d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+function fmtDate(iso){if(!iso)return"";const d=new Date(iso);return d.toLocaleDateString("en-US",{month:"short",day:"numeric"})+" "+d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}
+
+let runs=[],activeId=null,data=null,sim=null,selNode=null,pollTimer=null;
+const $=id=>document.getElementById(id);
+
+// ── Replay state ────────────────────────────────────────────────────
+let replay={
+  active:false, playing:false, step:0, steps:[], timer:null,
+  speed:1, speeds:[0.5,1,2,4], speedIdx:1,
+  // Graph state references set during renderGraph
+  allNodes:null, allLinks:null, nodeEl:null, linkEl:null, visibleNodeIds:null, visibleLinkIdx:null,
+  svgRef:null, zoomRef:null, graphW:0, graphH:0, gEl:null, route:null, routeToolEnd:null,
+};
+
+// ── Fetch ───────────────────────────────────────────────────────────
+async function fetchRuns(){
+  const r=await fetch("/api/runs");runs=await r.json();renderRuns();
+}
+async function loadRun(id){
+  if(replay.active)exitReplay();
+  activeId=id;renderRuns();
+  const r=await fetch(`/api/runs/${id}`);data=await r.json();
+  renderGraph();renderActivity();
+  const isLive=data.status==="running";
+  $("live-dot").style.display=isLive?"block":"none";
+  $("live-label").style.display=isLive?"block":"none";
+  $("activity").classList.add("open");
+  // Show replay button for completed runs
+  $("zr").style.display=(!isLive&&data.events&&data.events.length>0)?"flex":"none";
+  if(pollTimer)clearInterval(pollTimer);
+  if(isLive)pollTimer=setInterval(()=>refreshRun(),3000);
+}
+async function refreshRun(){
+  if(!activeId)return;
+  const r=await fetch(`/api/runs/${activeId}`);const nd=await r.json();
+  const changed=JSON.stringify(nd.stats)!==JSON.stringify(data?.stats)||nd.events?.length!==data?.events?.length;
+  data=nd;
+  if(changed&&!replay.active){renderGraph();renderActivity()}
+  if(data.status!=="running"){
+    $("live-dot").style.display="none";$("live-label").style.display="none";
+    if(pollTimer){clearInterval(pollTimer);pollTimer=null}
+    $("zr").style.display=(data.events&&data.events.length>0)?"flex":"none";
+    fetchRuns();
+  }
+}
+
+// ── Runs list ───────────────────────────────────────────────────────
+function renderRuns(){
+  if(!runs.length){$("runs").innerHTML='<div class="empty"><h3>No runs yet</h3><p>Run a scan to see results here.</p></div>';return}
+  $("runs").innerHTML=runs.map(r=>{
+    const s=r.stats||{};
+    return`<div class="rc${r.id===activeId?" active":""}" data-id="${r.id}">
+      <div class="t">${esc(r.target)}</div>
+      ${r.prompt?`<div class="prompt-text">${esc(trunc(r.prompt,60))}</div>`:""}
+      <div class="m">
+        <span>${fmtDate(r.started_at)}</span>
+        <span class="badge b-s">${r.status}</span>
+        ${s.finding?`<span class="badge b-f">${s.finding}</span>`:""}
+        ${s.asset?`<span class="badge b-a">${s.asset}</span>`:""}
+        ${s.tool?`<span class="badge b-t">${s.tool}</span>`:""}
+      </div>
+    </div>`;
+  }).join("");
+  $("runs").querySelectorAll(".rc").forEach(el=>el.onclick=()=>loadRun(el.dataset.id));
+}
+
+// ── Activity feed ───────────────────────────────────────────────────
+function renderActivity(maxEvents){
+  const events=data?.events||[];
+  const visible=maxEvents!=null?events.slice(0,maxEvents):events;
+  if(!visible.length){$("act-list").innerHTML='<div style="padding:12px 18px;color:var(--text3);font-size:11px">No events yet.</div>';return}
+  $("act-list").innerHTML=visible.map((ev,i)=>{
+    const ts=fmtTime(ev.ts);
+    if(ev.type==="reasoning"){
+      return`<div class="act-item think" data-idx="${i}"><span class="ts">${ts}</span><div class="dot"></div><div class="msg"><span class="reasoning">${esc(trunc(ev.text,120))}</span></div></div>`;
+    }
+    if(ev.type==="finding"){
+      const sev=ev.severity||"info";
+      return`<div class="act-item finding-ev" data-idx="${i}"><span class="ts">${ts}</span><div class="dot"></div><div class="msg">[${esc(sev.toUpperCase())}] ${esc(trunc(ev.title||"Finding",80))} — ${esc(trunc(ev.url||"",60))}</div></div>`;
+    }
+    const cls=ev.success?"ok":"fail";
+    const argsStr=ev.args?Object.entries(ev.args).filter(([k])=>k!=="code").map(([k,v])=>`${k}=${typeof v==="string"?trunc(v,30):v}`).join(" "):"";
+    return`<div class="act-item ${cls}" data-idx="${i}"><span class="ts">${ts}</span><div class="dot"></div><div class="msg"><span class="tool-name">${esc(ev.tool)}</span> ${esc(trunc(argsStr,80))}</div></div>`;
+  }).join("");
+  const list=$("act-list");list.scrollTop=list.scrollHeight;
+  $("act-list").querySelectorAll(".act-item").forEach(el=>{
+    el.onclick=()=>{
+      const ev=events[+el.dataset.idx];
+      if(ev)showEventDetail(ev);
+    };
+  });
+}
+$("act-toggle").onclick=()=>{const a=$("activity");a.classList.toggle("open");$("act-toggle").textContent=a.classList.contains("open")?"\u2193":"\u2191"};
+
+// ── Right panel ─────────────────────────────────────────────────────
+function openPanel(){$("rpanel").classList.add("open")}
+function closePanel(){$("rpanel").classList.remove("open");selNode=null;d3.selectAll(".node").classed("selected",false)}
+
+function showNodeDetail(d){
+  openPanel();
+  const c=nColor(d);
+  let headHtml=`<div class="rp-info"><span class="rp-type" style="background:${c}22;color:${c}">${d.type}</span><h3>${esc(d.label)}</h3></div><div class="rp-close" id="rp-close">&times;</div>`;
+  $("rp-head").innerHTML=headHtml;
+  $("rp-close").onclick=closePanel;
+
+  let body="";
+  const dt=d.data||{};
+
+  const metaKeys=["kind","severity","iteration","seq","success","status","tech","server","port","service","proto","template","url","waf"];
+  const meta=metaKeys.filter(k=>dt[k]!==undefined);
+  if(meta.length){
+    body+=`<div class="rp-section"><h4>Details</h4>`;
+    meta.forEach(k=>{let v=dt[k];if(Array.isArray(v))v=v.join(", ");body+=`<div class="rp-row"><strong>${esc(k)}:</strong> ${esc(String(v))}</div>`});
+    body+=`</div>`;
+  }
+
+  if(dt.args){
+    body+=`<div class="rp-section"><h4>Arguments</h4>`;
+    Object.entries(dt.args).forEach(([k,v])=>{
+      const val=typeof v==="string"?v:JSON.stringify(v);
+      body+=`<div class="rp-row"><strong>${esc(k)}:</strong> ${esc(trunc(val,200))}</div>`;
+    });
+    body+=`</div>`;
+  }
+
+  // Finding-specific fields
+  if(d.type==="finding"){
+    if(dt.description){body+=`<div class="rp-section"><h4>Description</h4><div class="rp-row">${esc(dt.description)}</div></div>`}
+    if(dt.proof){body+=`<div class="rp-section"><h4>Proof</h4><div class="rp-log">${esc(dt.proof)}</div></div>`}
+    if(dt.impact){body+=`<div class="rp-section"><h4>Impact</h4><div class="rp-row">${esc(dt.impact)}</div></div>`}
+    if(dt.remediation){body+=`<div class="rp-section"><h4>Remediation</h4><div class="rp-row">${esc(dt.remediation)}</div></div>`}
+  }
+
+  if(dt.stdout){body+=`<div class="rp-section"><h4>Output</h4><div class="rp-log">${esc(dt.stdout)}</div></div>`}
+  if(dt.stderr){body+=`<div class="rp-section"><h4>Errors</h4><div class="rp-log err">${esc(dt.stderr)}</div></div>`}
+  if(dt.scope){body+=`<div class="rp-section"><h4>Scope</h4><div class="rp-row">${esc(dt.scope)}</div></div>`}
+  $("rp-body").innerHTML=body;
+}
+
+function showEventDetail(ev){
+  openPanel();
+  const isFinding=ev.type==="finding";
+  const isReasoning=ev.type==="reasoning";
+  const c=isFinding?SEV[ev.severity]||COLORS.finding:isReasoning?COLORS.target:ev.success?COLORS.asset:COLORS.finding;
+  const typeLabel=isFinding?`${(ev.severity||"info").toUpperCase()} finding`:isReasoning?"reasoning":ev.tool;
+
+  $("rp-head").innerHTML=`<div class="rp-info"><span class="rp-type" style="background:${c}22;color:${c}">${typeLabel}</span><h3>${isFinding?esc(ev.title):isReasoning?"Agent Reasoning":esc(ev.tool)}</h3></div><div class="rp-close" id="rp-close">&times;</div>`;
+  $("rp-close").onclick=closePanel;
+
+  let body=`<div class="rp-section"><h4>Info</h4>`;
+  body+=`<div class="rp-row"><strong>Time:</strong> ${fmtTime(ev.ts)}</div>`;
+  body+=`<div class="rp-row"><strong>Iteration:</strong> ${ev.iteration}</div>`;
+  if(!isReasoning&&!isFinding)body+=`<div class="rp-row"><strong>Status:</strong> ${ev.success?"Success":"Failed"}</div>`;
+  body+=`</div>`;
+
+  if(isFinding){
+    body+=`<div class="rp-section"><h4>Finding Details</h4>`;
+    body+=`<div class="rp-row"><strong>Severity:</strong> ${esc((ev.severity||"info").toUpperCase())}</div>`;
+    body+=`<div class="rp-row"><strong>URL:</strong> ${esc(ev.url||"")}</div>`;
+    if(ev.description)body+=`<div class="rp-row"><strong>Description:</strong> ${esc(ev.description)}</div>`;
+    if(ev.impact)body+=`<div class="rp-row"><strong>Impact:</strong> ${esc(ev.impact)}</div>`;
+    body+=`</div>`;
+    if(ev.proof){body+=`<div class="rp-section"><h4>Proof</h4><div class="rp-log">${esc(ev.proof)}</div></div>`}
+  } else if(isReasoning){
+    body+=`<div class="rp-section"><h4>Reasoning</h4><div class="rp-log">${esc(ev.text)}</div></div>`;
+  } else {
+    if(ev.args){
+      body+=`<div class="rp-section"><h4>Arguments</h4>`;
+      Object.entries(ev.args).forEach(([k,v])=>{
+        const val=typeof v==="string"?v:JSON.stringify(v);
+        body+=`<div class="rp-row"><strong>${esc(k)}:</strong> ${esc(trunc(val,500))}</div>`;
+      });
+      body+=`</div>`;
+    }
+    if(ev.stdout){body+=`<div class="rp-section"><h4>Output</h4><div class="rp-log">${esc(ev.stdout)}</div></div>`}
+    if(ev.stderr){body+=`<div class="rp-section"><h4>Errors</h4><div class="rp-log err">${esc(ev.stderr)}</div></div>`}
+  }
+  $("rp-body").innerHTML=body;
+}
+
+// ── Graph ───────────────────────────────────────────────────────────
+
+// Shared layout computation — returns positioned nodes, links, parentOf map
+function computeLayout(nodes, edges){
+  const idMap={};nodes.forEach((n,i)=>idMap[n.id]=i);
+  const links=edges.filter(e=>idMap[e.source]!==undefined&&idMap[e.target]!==undefined).map(e=>({source:idMap[e.source],target:idMap[e.target],label:e.label,isFlow:e.label==="then",sourceId:e.source,targetId:e.target}));
+
+  const W=$("graph").clientWidth,H=$("graph").clientHeight;
+
+  const childrenOf={};const parentOf={};
+  links.forEach(l=>{
+    const sn=typeof l.source==="number"?nodes[l.source]:l.source;
+    const tn=typeof l.target==="number"?nodes[l.target]:l.target;
+    const sid=sn.id||sn;const tid=tn.id||tn;
+    const sNode=nodes.find(n=>n.id===sid);const tNode=nodes.find(n=>n.id===tid);
+    if(!sNode||!tNode)return;
+    if(sNode.type==="tool"&&(tNode.type==="asset"||tNode.type==="finding")){
+      if(!childrenOf[sid])childrenOf[sid]=[];
+      if(!childrenOf[sid].includes(tid)){childrenOf[sid].push(tid);parentOf[tid]=sid;}
+    }
+  });
+
+  const LAYER_GAP=110,PADDING_TOP=60;
+  const toolNodes=nodes.filter(n=>n.type==="tool").sort((a,b)=>(a.data?.seq||0)-(b.data?.seq||0));
+  const assetNodes=nodes.filter(n=>n.type==="asset");
+  const findingNodes=nodes.filter(n=>n.type==="finding");
+  const targetNode=nodes.find(n=>n.type==="target");
+  const layerY={target:PADDING_TOP,tool:PADDING_TOP+LAYER_GAP,asset:PADDING_TOP+LAYER_GAP*2,finding:PADDING_TOP+LAYER_GAP*3};
+
+  if(targetNode){targetNode.fx=W/2;targetNode.fy=layerY.target}
+
+  const toolSpacing=Math.min(100,(W-100)/(toolNodes.length||1));
+  const toolStartX=W/2-(toolNodes.length-1)*toolSpacing/2;
+  toolNodes.forEach((n,i)=>{n.fx=toolStartX+i*toolSpacing;n.fy=layerY.tool});
+
+  const toolAssets={};
+  assetNodes.forEach(n=>{const par=parentOf[n.id];if(par){if(!toolAssets[par])toolAssets[par]=[];toolAssets[par].push(n)}});
+  const orphanAssets=assetNodes.filter(n=>!parentOf[n.id]);
+
+  Object.entries(toolAssets).forEach(([toolId,assets])=>{
+    const pt=nodes.find(n=>n.id===toolId);if(!pt)return;
+    const px=pt.fx||W/2;const spread=Math.min(60,300/(assets.length||1));
+    const sx=px-(assets.length-1)*spread/2;
+    assets.forEach((n,i)=>{n.fx=sx+i*spread;n.fy=layerY.asset});
+  });
+  if(orphanAssets.length){
+    const sp=Math.min(80,(W-100)/(orphanAssets.length||1));const sx=W/2-(orphanAssets.length-1)*sp/2;
+    orphanAssets.forEach((n,i)=>{n.fx=sx+i*sp;n.fy=layerY.asset+40});
+  }
+
+  const toolFindings={};
+  findingNodes.forEach(n=>{const par=parentOf[n.id];if(par){if(!toolFindings[par])toolFindings[par]=[];toolFindings[par].push(n)}});
+  const orphanFindings=findingNodes.filter(n=>!parentOf[n.id]);
+
+  Object.entries(toolFindings).forEach(([toolId,findings])=>{
+    const pt=nodes.find(n=>n.id===toolId);if(!pt)return;
+    const px=pt.fx||W/2;const spread=Math.min(70,250/(findings.length||1));
+    const sx=px-(findings.length-1)*spread/2;
+    findings.forEach((n,i)=>{n.fx=sx+i*spread;n.fy=layerY.finding});
+  });
+  if(orphanFindings.length){
+    const sp=Math.min(80,(W-100)/(orphanFindings.length||1));const sx=W/2-(orphanFindings.length-1)*sp/2;
+    orphanFindings.forEach((n,i)=>{n.fx=sx+i*sp;n.fy=layerY.finding});
+  }
+
+  nodes.forEach(n=>{if(n.fx!=null)n.x=n.fx;if(n.fy!=null)n.y=n.fy});
+  return{nodes,links,parentOf,childrenOf,W,H};
+}
+
+function linkPath(d){
+  const sx=d.source.x,sy=d.source.y,tx=d.target.x,ty=d.target.y;
+  const dx=tx-sx,dy=ty-sy;const cx=sx+dx*0.5,cy=sy+dy*0.5;
+  const dist=Math.sqrt(dx*dx+dy*dy)||1;
+  const off=Math.min(dist*0.1,20);const nx=-dy/dist*off,ny=dx/dist*off;
+  return`M${sx},${sy}Q${cx+nx},${cy+ny},${tx},${ty}`;
+}
+
+// ── Agent trail helpers ────────────────────────────────────────────
+// Build ordered waypoints with roundtrips: target → tool1 → asset1a → tool1 → asset1b → tool1 → tool2 → ...
+// Each tool "visits" its children and returns, showing the bidirectional request/response flow.
+function buildAgentRoute(nodes, childrenOf){
+  const target=nodes.find(n=>n.type==="target");
+  const tools=nodes.filter(n=>n.type==="tool").sort((a,b)=>(a.data?.seq||0)-(b.data?.seq||0));
+  const nodeById={};nodes.forEach(n=>nodeById[n.id]=n);
+  const route=[];
+  if(target)route.push({node:target,type:"target"});
+
+  tools.forEach(t=>{
+    // Agent arrives at tool
+    route.push({node:t,type:"tool"});
+    // Then visits each child asset/finding and returns
+    const children=(childrenOf||{})[t.id]||[];
+    children.forEach(cid=>{
+      const child=nodeById[cid];
+      if(child){
+        route.push({node:child,type:child.type}); // go down
+        route.push({node:t,type:"return"});        // come back
+      }
+    });
+  });
+  return route;
+}
+
+// Generate SVG path data through waypoints with smooth curves
+function trailPathData(waypoints){
+  if(waypoints.length<2)return"";
+  const pts=waypoints.map(w=>w.node||w);
+  let d=`M${pts[0].x},${pts[0].y}`;
+  for(let i=1;i<pts.length;i++){
+    const p=pts[i-1],c=pts[i];
+    const dx=c.x-p.x,dy=c.y-p.y;
+    const cx1=p.x+dx*0.4,cy1=p.y+dy*0.15;
+    const cx2=p.x+dx*0.6,cy2=c.y-dy*0.15;
+    d+=`C${cx1},${cy1},${cx2},${cy2},${c.x},${c.y}`;
+  }
+  return d;
+}
+
+// Render the agent trail + cursor onto a given SVG <g> element
+// route = array of {node, type} waypoints, upToIdx = how many waypoints to show (-1 = all)
+// isLive = animate the trail flow
+function renderTrail(g, route, upToIdx, isLive){
+  g.selectAll(".agent-trail,.agent-trail-bg,.agent-cursor").remove();
+  if(!route||route.length<2)return;
+
+  const pts=upToIdx>=0?route.slice(0,upToIdx+1):route;
+  if(pts.length<2)return;
+
+  const pathD=trailPathData(pts);
+
+  // Background glow
+  g.insert("path",":first-child").attr("class","agent-trail-bg").attr("d",pathD);
+  // Main trail
+  const trail=g.insert("path",":first-child").attr("class","agent-trail"+(isLive?" animated":"")).attr("d",pathD);
+
+  // Draw-in animation for non-live
+  if(!isLive){
+    const len=trail.node().getTotalLength();
+    trail.attr("stroke-dasharray",len).attr("stroke-dashoffset",len)
+      .transition().duration(800).ease(d3.easeCubicOut).attr("stroke-dashoffset",0)
+      .on("end",function(){d3.select(this).attr("stroke-dasharray","8 4").classed("animated",true)});
+  }
+
+  // Agent cursor at the last waypoint
+  const last=pts[pts.length-1];
+  const pos=last.node||last;
+  const cursor=g.append("g").attr("class","agent-cursor").attr("transform",`translate(${pos.x},${pos.y})`);
+  cursor.append("circle").attr("class","cursor-ring").attr("r",16);
+  cursor.append("circle").attr("class","cursor-dot").attr("r",5);
+  cursor.append("text").attr("class","cursor-label").attr("dy",-22).text("AGENT");
+}
+
+function renderGraph(){
+  $("graph-empty").style.display="none";
+  $("legend").classList.add("show");
+  closePanel();
+
+  const svg=d3.select("#svg");
+  svg.selectAll("*").remove();
+  if(sim)sim.stop();
+
+  const nodes=data.nodes.map(n=>({...n}));
+  const edges=data.edges.map(e=>({...e}));
+  const layout=computeLayout(nodes,edges);
+
+  const defs=svg.append("defs");
+  defs.append("marker").attr("id","arr").attr("viewBox","0 -3 6 6").attr("refX",18).attr("refY",0).attr("markerWidth",5).attr("markerHeight",5).attr("orient","auto").append("path").attr("d","M0,-3L6,0L0,3").attr("class","arrow");
+  const flt=defs.append("filter").attr("id","glow").attr("x","-50%").attr("y","-50%").attr("width","200%").attr("height","200%");
+  flt.append("feGaussianBlur").attr("stdDeviation","3").attr("result","blur");
+  flt.append("feMerge").selectAll("feMergeNode").data(["blur","SourceGraphic"]).join("feMergeNode").attr("in",d=>d);
+
+  const g=svg.append("g");
+  const zoom=d3.zoom().scaleExtent([.1,5]).on("zoom",e=>g.attr("transform",e.transform));
+  svg.call(zoom);
+
+  const link=g.append("g").selectAll("path").data(layout.links).join("path")
+    .attr("class",d=>d.isFlow?"link flow":"link")
+    .attr("marker-end",d=>d.isFlow?null:"url(#arr)");
+
+  const node=g.append("g").selectAll("g").data(nodes).join("g").attr("class","node")
+    .call(d3.drag()
+      .on("start",(e,d)=>{if(!e.active)sim.alphaTarget(.15).restart();d.fx=d.x;d.fy=d.y})
+      .on("drag",(e,d)=>{d.fx=e.x;d.fy=e.y})
+      .on("end",(e,d)=>{if(!e.active)sim.alphaTarget(0)}));
+
+  node.append("circle").attr("class","status-ring").attr("r",d=>nRadius(d)+4);
+  node.append("circle").attr("r",d=>nRadius(d)).attr("fill",d=>nColor(d))
+    .attr("stroke","rgba(255,255,255,0.9)").attr("stroke-width",1.5)
+    .attr("filter",d=>d.type==="target"?"url(#glow)":null);
+  node.append("text").attr("class","icon").attr("dy",".1em").text(d=>nIcon(d));
+  node.append("text").attr("class","lbl").attr("dy",d=>nRadius(d)+13)
+    .text(d=>{let l=d.label;if(d.type==="tool"&&d.data?.seq)l=`${d.data.seq}. ${l}`;return trunc(l,30)});
+
+  node.on("mouseover",(e,d)=>{
+    const conn=new Set([d.id]);
+    layout.links.forEach(l=>{
+      const si=typeof l.source==="object"?l.source.id:nodes[l.source]?.id;
+      const ti=typeof l.target==="object"?l.target.id:nodes[l.target]?.id;
+      if(si===d.id)conn.add(ti);if(ti===d.id)conn.add(si);
+    });
+    node.classed("dimmed",n=>!conn.has(n.id));
+    link.classed("dimmed",l=>{
+      const si=typeof l.source==="object"?l.source.id:nodes[l.source]?.id;
+      const ti=typeof l.target==="object"?l.target.id:nodes[l.target]?.id;
+      return!conn.has(si)&&!conn.has(ti);
+    });
+  });
+  node.on("mouseout",()=>{node.classed("dimmed",false);link.classed("dimmed",false)});
+  node.on("click",(e,d)=>{e.stopPropagation();node.classed("selected",n=>n.id===d.id);selNode=d;showNodeDetail(d)});
+  svg.on("click",()=>closePanel());
+
+  sim=d3.forceSimulation(nodes)
+    .force("link",d3.forceLink(layout.links).distance(70).strength(0.05))
+    .force("collision",d3.forceCollide().radius(d=>nRadius(d)+18).strength(0.8))
+    .alpha(0.3).alphaDecay(0.05)
+    .on("tick",()=>{link.attr("d",linkPath);node.attr("transform",d=>`translate(${d.x},${d.y})`)});
+
+  // Render agent trail after positions settle
+  const isLive=data.status==="running";
+  setTimeout(()=>{
+    const route=buildAgentRoute(nodes,layout.childrenOf);
+    renderTrail(g,route,-1,isLive);
+    autoFit(svg,zoom,nodes,layout.W,layout.H);
+  },800);
+
+  $("zi").onclick=()=>svg.transition().duration(300).call(zoom.scaleBy,1.4);
+  $("zo").onclick=()=>svg.transition().duration(300).call(zoom.scaleBy,.7);
+  $("zf").onclick=()=>svg.transition().duration(500).call(zoom.transform,d3.zoomIdentity.translate(layout.W/2,layout.H/2).scale(.85).translate(-layout.W/2,-layout.H/2));
+}
+
+function autoFit(svg,zoom,nodes,W,H){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  nodes.forEach(n=>{if(n.x<minX)minX=n.x;if(n.y<minY)minY=n.y;if(n.x>maxX)maxX=n.x;if(n.y>maxY)maxY=n.y});
+  if(!isFinite(minX))return;
+  const pad=80;minX-=pad;minY-=pad;maxX+=pad;maxY+=pad;
+  const bw=maxX-minX,bh=maxY-minY;
+  const scale=Math.min(W/bw,H/bh,1.5);
+  const tx=W/2-(minX+bw/2)*scale,ty=H/2-(minY+bh/2)*scale;
+  svg.transition().duration(600).call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(scale));
+}
+
+// ── Replay system ───────────────────────────────────────────────────
+
+function buildReplaySteps(){
+  // Build replay steps from events. Each tool_call event = 1 step that reveals
+  // the action node + its child assets/findings. Reasoning events are folded into
+  // the next tool step as context.
+  if(!data)return[];
+  const events=data.events||[];
+  const nodes=data.nodes||[];
+  const edges=data.edges||[];
+
+  // Map: tool seq → action node id (action_{seq}_{tool})
+  const seqToActionId={};
+  nodes.forEach(n=>{if(n.type==="tool"&&n.data?.seq)seqToActionId[n.data.seq]=n.id});
+
+  // Map: action_id → child node ids (from edges)
+  const actionChildren={};
+  edges.forEach(e=>{
+    const sNode=nodes.find(n=>n.id===e.source);
+    const tNode=nodes.find(n=>n.id===e.target);
+    if(sNode?.type==="tool"&&(tNode?.type==="asset"||tNode?.type==="finding")){
+      if(!actionChildren[e.source])actionChildren[e.source]=[];
+      actionChildren[e.source].push(e.target);
+    }
+  });
+
+  // Also collect edges involving each node for link reveal
+  const nodeEdgeIdx={};
+  edges.forEach((e,i)=>{
+    if(!nodeEdgeIdx[e.source])nodeEdgeIdx[e.source]=[];
+    if(!nodeEdgeIdx[e.target])nodeEdgeIdx[e.target]=[];
+    nodeEdgeIdx[e.source].push(i);
+    nodeEdgeIdx[e.target].push(i);
+  });
+
+  const steps=[];
+  let pendingReasoning=[];
+  let toolSeq=0;
+
+  // Also build a map of finding node IDs by iteration for report_finding events
+  const findingNodesByIter={};
+  nodes.forEach(n=>{
+    if(n.type==="finding"&&n.data?.iteration){
+      if(!findingNodesByIter[n.data.iteration])findingNodesByIter[n.data.iteration]=[];
+      findingNodesByIter[n.data.iteration].push(n.id);
+    }
+  });
+
+  events.forEach((ev,evIdx)=>{
+    if(ev.type==="reasoning"){
+      pendingReasoning.push(ev);
+      return;
+    }
+    // Finding events: attach to the last step (the tool that discovered it)
+    if(ev.type==="finding"){
+      if(steps.length){
+        // Add any finding nodes from this iteration to the last step's reveal set
+        const fNodes=findingNodesByIter[ev.iteration]||[];
+        fNodes.forEach(fid=>steps[steps.length-1].revealNodes.add(fid));
+        steps[steps.length-1].eventIdx=evIdx; // extend event range
+      }
+      return;
+    }
+    if(ev.type==="tool_call"){
+      toolSeq++;
+      const actionId=seqToActionId[toolSeq];
+      const revealNodes=new Set();
+      if(actionId){
+        revealNodes.add(actionId);
+        (actionChildren[actionId]||[]).forEach(c=>revealNodes.add(c));
+      }
+      steps.push({
+        event:ev,
+        eventIdx:evIdx,
+        reasoning:pendingReasoning.slice(),
+        actionId,
+        revealNodes,
+        toolSeq,
+      });
+      pendingReasoning=[];
+    }
+  });
+
+  // Trailing reasoning with no tool call
+  if(pendingReasoning.length&&steps.length){
+    steps[steps.length-1].reasoning.push(...pendingReasoning);
+  }
+
+  return steps;
+}
+
+function startReplay(){
+  if(!data||!data.events||data.events.length===0)return;
+  const steps=buildReplaySteps();
+  if(!steps.length)return;
+
+  replay.active=true;
+  replay.playing=false;
+  replay.step=0;
+  replay.steps=steps;
+
+  // Show replay bar, hide live indicator
+  $("replay-bar").classList.add("show");
+  $("zr").style.display="none";
+  $("live-dot").style.display="none";
+  $("live-label").style.display="none";
+  $("rp-play").innerHTML="&#9654;";
+  $("rp-speed").textContent=replay.speeds[replay.speedIdx]+"x";
+  $("rp-info").textContent=`0 / ${steps.length}`;
+
+  // Render track markers
+  const markersEl=$("rp-markers");
+  markersEl.innerHTML="";
+  steps.forEach((s,i)=>{
+    const pct=(i/(steps.length-1||1))*100;
+    const cls=s.event.success?"tool-m":"finding-m";
+    const div=document.createElement("div");
+    div.className=`replay-marker ${cls} future`;
+    div.style.left=pct+"%";
+    div.dataset.idx=i;
+    markersEl.appendChild(div);
+  });
+
+  // Render the graph in replay mode (all nodes computed but hidden)
+  renderGraphReplay();
+
+  // Show step 0 (just the target node)
+  applyReplayStep(0);
+}
+
+function renderGraphReplay(){
+  $("graph-empty").style.display="none";
+  $("legend").classList.add("show");
+  closePanel();
+
+  const svg=d3.select("#svg");
+  svg.selectAll("*").remove();
+  if(sim)sim.stop();
+
+  const nodes=data.nodes.map(n=>({...n}));
+  const edges=data.edges.map(e=>({...e}));
+  const layout=computeLayout(nodes,edges);
+
+  replay.allNodes=nodes;
+  replay.allLinks=layout.links;
+  replay.graphW=layout.W;
+  replay.graphH=layout.H;
+
+  const defs=svg.append("defs");
+  defs.append("marker").attr("id","arr").attr("viewBox","0 -3 6 6").attr("refX",18).attr("refY",0).attr("markerWidth",5).attr("markerHeight",5).attr("orient","auto").append("path").attr("d","M0,-3L6,0L0,3").attr("class","arrow");
+  const flt=defs.append("filter").attr("id","glow").attr("x","-50%").attr("y","-50%").attr("width","200%").attr("height","200%");
+  flt.append("feGaussianBlur").attr("stdDeviation","3").attr("result","blur");
+  flt.append("feMerge").selectAll("feMergeNode").data(["blur","SourceGraphic"]).join("feMergeNode").attr("in",d=>d);
+
+  const g=svg.append("g");
+  const zoom=d3.zoom().scaleExtent([.1,5]).on("zoom",e=>g.attr("transform",e.transform));
+  svg.call(zoom);
+  replay.svgRef=svg;replay.zoomRef=zoom;
+
+  // Create all links (hidden initially)
+  const link=g.append("g").selectAll("path").data(layout.links).join("path")
+    .attr("class",d=>d.isFlow?"link flow":"link")
+    .attr("marker-end",d=>d.isFlow?null:"url(#arr)")
+    .style("opacity",0);
+  replay.linkEl=link;
+
+  // Create all nodes (hidden initially)
+  const node=g.append("g").selectAll("g").data(nodes).join("g")
+    .attr("class","node")
+    .style("opacity",0)
+    .attr("transform",d=>`translate(${d.x},${d.y})`);
+
+  node.append("circle").attr("class","status-ring").attr("r",d=>nRadius(d)+4);
+  node.append("circle").attr("r",d=>nRadius(d)).attr("fill",d=>nColor(d))
+    .attr("stroke","rgba(255,255,255,0.9)").attr("stroke-width",1.5)
+    .attr("filter",d=>d.type==="target"?"url(#glow)":null);
+  node.append("text").attr("class","icon").attr("dy",".1em").text(d=>nIcon(d));
+  node.append("text").attr("class","lbl").attr("dy",d=>nRadius(d)+13)
+    .text(d=>{let l=d.label;if(d.type==="tool"&&d.data?.seq)l=`${d.data.seq}. ${l}`;return trunc(l,30)});
+
+  node.on("mouseover",(e,d)=>{
+    if(!replay.visibleNodeIds?.has(d.id))return;
+    const conn=new Set([d.id]);
+    layout.links.forEach(l=>{
+      const si=typeof l.source==="object"?l.source.id:nodes[l.source]?.id;
+      const ti=typeof l.target==="object"?l.target.id:nodes[l.target]?.id;
+      if(si===d.id)conn.add(ti);if(ti===d.id)conn.add(si);
+    });
+    node.classed("dimmed",n=>replay.visibleNodeIds?.has(n.id)&&!conn.has(n.id));
+    link.classed("dimmed",l=>{
+      const si=typeof l.source==="object"?l.source.id:nodes[l.source]?.id;
+      const ti=typeof l.target==="object"?l.target.id:nodes[l.target]?.id;
+      return!conn.has(si)&&!conn.has(ti);
+    });
+  });
+  node.on("mouseout",()=>{node.classed("dimmed",false);link.classed("dimmed",false)});
+  node.on("click",(e,d)=>{
+    if(!replay.visibleNodeIds?.has(d.id))return;
+    e.stopPropagation();node.classed("selected",n=>n.id===d.id);selNode=d;showNodeDetail(d);
+  });
+  svg.on("click",()=>closePanel());
+
+  replay.nodeEl=node;
+  replay.gEl=g;
+  replay.route=buildAgentRoute(nodes,layout.childrenOf);
+  // Build mapping: replay step index → last waypoint index in route for that tool
+  // route structure: [{target}, {tool1}, {child1a}, {tool1-return}, {child1b}, {tool1-return}, {tool2}, ...]
+  // We need to find the index of the last waypoint belonging to each tool
+  replay.routeToolEnd=[];
+  const toolsSorted=nodes.filter(n=>n.type==="tool").sort((a,b)=>(a.data?.seq||0)-(b.data?.seq||0));
+  toolsSorted.forEach((t,ti)=>{
+    // Find the last route entry for this tool (either its own position or a return to it)
+    let lastIdx=0;
+    for(let ri=0;ri<replay.route.length;ri++){
+      if(replay.route[ri].node.id===t.id)lastIdx=ri;
+    }
+    replay.routeToolEnd.push(lastIdx);
+  });
+
+  // No simulation needed — all positions are fixed
+  link.attr("d",linkPath);
+
+  setTimeout(()=>autoFit(svg,zoom,nodes,layout.W,layout.H),300);
+}
+
+function applyReplayStep(stepIdx){
+  replay.step=stepIdx;
+  const steps=replay.steps;
+  const nodes=replay.allNodes;
+  const links=replay.allLinks;
+
+  // Collect all node IDs visible up to this step
+  const visible=new Set();
+  // Target is always visible
+  const targetNode=nodes.find(n=>n.type==="target");
+  if(targetNode)visible.add(targetNode.id);
+
+  // Also add "target" → tool edges' target node
+  for(let i=0;i<=stepIdx&&i<steps.length;i++){
+    steps[i].revealNodes.forEach(id=>visible.add(id));
+  }
+  replay.visibleNodeIds=visible;
+
+  // Determine which links are visible (both endpoints visible)
+  const visibleLinkSet=new Set();
+  links.forEach((l,i)=>{
+    const si=typeof l.source==="object"?l.source.id:nodes[l.source]?.id;
+    const ti=typeof l.target==="object"?l.target.id:nodes[l.target]?.id;
+    if(visible.has(si)&&visible.has(ti))visibleLinkSet.add(i);
+  });
+
+  // Determine newly revealed nodes (for enter animation)
+  const prevVisible=new Set();
+  if(targetNode)prevVisible.add(targetNode.id);
+  for(let i=0;i<stepIdx&&i<steps.length;i++){
+    steps[i].revealNodes.forEach(id=>prevVisible.add(id));
+  }
+  const newlyRevealed=new Set();
+  visible.forEach(id=>{if(!prevVisible.has(id))newlyRevealed.add(id)});
+
+  // Update node visibility
+  replay.nodeEl
+    .style("opacity",d=>visible.has(d.id)?1:0)
+    .style("pointer-events",d=>visible.has(d.id)?"all":"none")
+    .classed("replay-enter",d=>newlyRevealed.has(d.id))
+    .classed("replay-active",d=>{
+      // Highlight the current step's action node
+      if(stepIdx>=0&&stepIdx<steps.length){
+        return d.id===steps[stepIdx].actionId;
+      }
+      return false;
+    });
+
+  // Clear enter class after animation
+  setTimeout(()=>{
+    if(replay.nodeEl)replay.nodeEl.classed("replay-enter",false);
+  },500);
+
+  // Update link visibility
+  replay.linkEl
+    .style("opacity",(d,i)=>visibleLinkSet.has(i)?1:0)
+    .classed("replay-enter",false);
+
+  // Newly visible links get draw animation
+  const prevLinkSet=new Set();
+  links.forEach((l,i)=>{
+    const si=typeof l.source==="object"?l.source.id:nodes[l.source]?.id;
+    const ti=typeof l.target==="object"?l.target.id:nodes[l.target]?.id;
+    if(prevVisible.has(si)&&prevVisible.has(ti))prevLinkSet.add(i);
+  });
+  replay.linkEl.classed("replay-enter",(d,i)=>visibleLinkSet.has(i)&&!prevLinkSet.has(i));
+  setTimeout(()=>{
+    if(replay.linkEl)replay.linkEl.classed("replay-enter",false);
+  },600);
+
+  // Update agent trail up to this step's tool (including its child roundtrips)
+  if(replay.gEl&&replay.route&&replay.routeToolEnd){
+    const endIdx=stepIdx<replay.routeToolEnd.length?replay.routeToolEnd[stepIdx]:replay.route.length-1;
+    renderTrail(replay.gEl,replay.route,Math.min(endIdx,replay.route.length-1),false);
+  }
+
+  // Update UI
+  $("rp-fill").style.width=((stepIdx+1)/steps.length*100)+"%";
+  $("rp-info").textContent=`${stepIdx+1} / ${steps.length}`;
+
+  // Update markers
+  $("rp-markers").querySelectorAll(".replay-marker").forEach(el=>{
+    el.classList.toggle("future",+el.dataset.idx>stepIdx);
+  });
+
+  // Update activity feed to show events up to this step
+  const eventsUpTo=stepIdx>=0&&stepIdx<steps.length?steps[stepIdx].eventIdx+1:0;
+  renderActivity(eventsUpTo);
+
+  // Show current event detail in right panel
+  if(stepIdx>=0&&stepIdx<steps.length){
+    const s=steps[stepIdx];
+    if(s.reasoning.length){
+      showEventDetail(s.reasoning[s.reasoning.length-1]);
+    } else {
+      showEventDetail(s.event);
+    }
+  }
+}
+
+function replayPlay(){
+  if(!replay.active)return;
+  replay.playing=true;
+  $("rp-play").innerHTML="&#9646;&#9646;";
+  replayTick();
+}
+
+function replayPause(){
+  replay.playing=false;
+  if(replay.timer){clearTimeout(replay.timer);replay.timer=null}
+  $("rp-play").innerHTML="&#9654;";
+}
+
+function replayTick(){
+  if(!replay.playing||!replay.active)return;
+  if(replay.step<replay.steps.length-1){
+    replay.step++;
+    applyReplayStep(replay.step);
+    const delay=1200/replay.speeds[replay.speedIdx];
+    replay.timer=setTimeout(replayTick,delay);
+  } else {
+    // Reached end
+    replayPause();
+  }
+}
+
+function replayStepFwd(){
+  if(!replay.active)return;
+  replayPause();
+  if(replay.step<replay.steps.length-1){
+    replay.step++;
+    applyReplayStep(replay.step);
+  }
+}
+
+function replayStepBack(){
+  if(!replay.active)return;
+  replayPause();
+  if(replay.step>0){
+    replay.step--;
+    applyReplayStep(replay.step);
+  }
+}
+
+function replayCycleSpeed(){
+  replay.speedIdx=(replay.speedIdx+1)%replay.speeds.length;
+  replay.speed=replay.speeds[replay.speedIdx];
+  $("rp-speed").textContent=replay.speed+"x";
+}
+
+function exitReplay(){
+  replayPause();
+  replay.active=false;
+  replay.steps=[];
+  replay.visibleNodeIds=null;
+  replay.gEl=null;
+  replay.route=null;
+  replay.routeToolEnd=null;
+  $("replay-bar").classList.remove("show");
+  // Re-render full graph
+  if(data){
+    renderGraph();
+    renderActivity();
+    $("zr").style.display=(data.events&&data.events.length>0&&data.status!=="running")?"flex":"none";
+  }
+}
+
+// ── Replay controls wiring ──────────────────────────────────────────
+$("rp-play").onclick=()=>{if(replay.playing)replayPause();else replayPlay()};
+$("rp-fwd").onclick=replayStepFwd;
+$("rp-back").onclick=replayStepBack;
+$("rp-speed").onclick=replayCycleSpeed;
+$("rp-exit").onclick=exitReplay;
+$("zr").onclick=startReplay;
+
+// Track scrubber click
+$("rp-track").onclick=(e)=>{
+  if(!replay.active||!replay.steps.length)return;
+  const rect=$("rp-track").getBoundingClientRect();
+  const pct=(e.clientX-rect.left)/rect.width;
+  const idx=Math.round(pct*(replay.steps.length-1));
+  replayPause();
+  applyReplayStep(Math.max(0,Math.min(idx,replay.steps.length-1)));
+};
+
+// Keyboard shortcuts for replay
+document.addEventListener("keydown",e=>{
+  if(!replay.active)return;
+  if(e.key===" "||e.code==="Space"){e.preventDefault();if(replay.playing)replayPause();else replayPlay()}
+  if(e.key==="ArrowRight"){e.preventDefault();replayStepFwd()}
+  if(e.key==="ArrowLeft"){e.preventDefault();replayStepBack()}
+});
+
+// ── Init ────────────────────────────────────────────────────────────
+fetchRuns().then(()=>{if(runs.length)loadRun(runs[0].id)});
+setInterval(fetchRuns,8000);
+
+})();
+</script>
+</body>
+</html>
