@@ -1,5 +1,5 @@
 services:
-  cannon:
+  mimick:
     build: .
     env_file: .env
     volumes:
@@ -7,6 +7,6 @@ services:
     ports:
       - "8117:8117"
     # Override to run a scan:
-    #   docker compose run cannon scan example.com
+    #   docker compose run mimick scan example.com
     # Or launch the dashboard:
-    #   docker compose run --service-ports cannon web --host 0.0.0.0
+    #   docker compose run --service-ports mimick web --host 0.0.0.0

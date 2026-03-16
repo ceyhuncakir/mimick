@@ -33,7 +33,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 RUN git clone --depth 1 https://github.com/sqlmapproject/sqlmap.git /opt/sqlmap \
     && ln -s /opt/sqlmap/sqlmap.py /usr/local/bin/sqlmap
 
-# ── Install cannon ──────────────────────────────────────────────────
+# ── Install mimick ──────────────────────────────────────────────────
 WORKDIR /app
 
 # Copy dependency files first for layer caching
@@ -54,9 +54,9 @@ RUN uv sync --frozen
 RUN uv run playwright install --with-deps chromium
 
 # ── Runtime config ──────────────────────────────────────────────────
-ENV CANNON_OUTPUT_DIR=/app/results
+ENV MIMICK_OUTPUT_DIR=/app/results
 VOLUME ["/app/results"]
 EXPOSE 8117
 
-ENTRYPOINT ["uv", "run", "cannon"]
+ENTRYPOINT ["uv", "run", "mimick"]
 CMD ["--help"]

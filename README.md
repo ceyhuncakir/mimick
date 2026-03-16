@@ -1,6 +1,6 @@
 <div align="center">
 
-# Cannon
+# Mimick
 
 **Autonomous AI-powered web penetration testing agent**
 
@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PydanticAI](https://img.shields.io/badge/built%20with-PydanticAI-ff69b4.svg)](https://github.com/pydantic/pydantic-ai)
 
-Cannon is an autonomous pentesting agent that chains 17 security tools with LLM reasoning to find real, exploitable vulnerabilities in web applications. It performs full-scope assessments — from subdomain enumeration to exploitation — and produces validated findings with reproduction steps.
+Mimick is an autonomous pentesting agent that chains 17 security tools with LLM reasoning to find real, exploitable vulnerabilities in web applications. It performs full-scope assessments — from subdomain enumeration to exploitation — and produces validated findings with reproduction steps.
 
 [Getting Started](#getting-started) · [Usage](#usage) · [Tools](#tools) · [Benchmarks](#benchmarks) · [Architecture](#architecture)
 
@@ -38,15 +38,15 @@ Cannon is an autonomous pentesting agent that chains 17 security tools with LLM 
 ### Install
 
 ```bash
-git clone https://github.com/yourusername/cannon.git
-cd cannon
+git clone https://github.com/yourusername/mimick.git
+cd mimick
 pip install -e .
 playwright install chromium
 ```
 
 ### External Tools
 
-Cannon works best with these tools installed. It gracefully skips any that are missing.
+Mimick works best with these tools installed. It gracefully skips any that are missing.
 
 ```bash
 # Core (recommended)
@@ -69,7 +69,7 @@ pip install wafw00f
 Check what's installed:
 
 ```bash
-cannon tools
+mimick tools
 ```
 
 ### Configuration
@@ -84,14 +84,14 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export OPENAI_API_KEY=sk-...
 ```
 
-All settings can be configured via environment variables with the `CANNON_` prefix:
+All settings can be configured via environment variables with the `MIMICK_` prefix:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CANNON_MODEL` | `openrouter/anthropic/claude-sonnet-4-20250514` | LLM model identifier |
-| `CANNON_MAX_ITERATIONS` | `50` | Max agent iterations per scan |
-| `CANNON_OUTPUT_DIR` | `./results` | Directory for reports and attack graphs |
-| `CANNON_LOG_LEVEL` | `INFO` | Logging verbosity |
+| `MIMICK_MODEL` | `openrouter/anthropic/claude-sonnet-4-20250514` | LLM model identifier |
+| `MIMICK_MAX_ITERATIONS` | `50` | Max agent iterations per scan |
+| `MIMICK_OUTPUT_DIR` | `./results` | Directory for reports and attack graphs |
+| `MIMICK_LOG_LEVEL` | `INFO` | Logging verbosity |
 
 ## Usage
 
@@ -99,45 +99,45 @@ All settings can be configured via environment variables with the `CANNON_` pref
 
 ```bash
 # Basic scan
-cannon scan example.com
+mimick scan example.com
 
 # Scoped scan with custom model
-cannon scan https://app.example.com --scope "*.example.com" -m anthropic:claude-sonnet-4-20250514
+mimick scan https://app.example.com --scope "*.example.com" -m anthropic:claude-sonnet-4-20250514
 
 # Focused scan
-cannon scan https://api.example.com -p "Focus on SQL injection and IDOR"
+mimick scan https://api.example.com -p "Focus on SQL injection and IDOR"
 
 # Parallel subdomain testing (10 concurrent child agents)
-cannon scan example.com -c 10
+mimick scan example.com -c 10
 
 # Custom output directory
-cannon scan example.com -o ./results/acme-corp
+mimick scan example.com -o ./results/acme-corp
 ```
 
 ### View results
 
 ```bash
 # Launch the web dashboard
-cannon web
+mimick web
 
 # Serve results from a specific directory
-cannon web -o ./results/acme-corp --port 3000
+mimick web -o ./results/acme-corp --port 3000
 ```
 
 ### Run benchmarks
 
 ```bash
 # Run all 104 XBOW challenges
-cannon benchmark /path/to/validation-benchmarks
+mimick benchmark /path/to/validation-benchmarks
 
 # Filter by vulnerability type
-cannon benchmark /path/to/validation-benchmarks --tags sqli,xss
+mimick benchmark /path/to/validation-benchmarks --tags sqli,xss
 
 # Easy challenges only, with 3 running in parallel
-cannon benchmark /path/to/validation-benchmarks --level 1 -c 3
+mimick benchmark /path/to/validation-benchmarks --level 1 -c 3
 
 # Specific challenges
-cannon benchmark /path/to/validation-benchmarks -f XBEN-001-24,XBEN-005-24
+mimick benchmark /path/to/validation-benchmarks -f XBEN-001-24,XBEN-005-24
 ```
 
 ## Tools
@@ -164,10 +164,10 @@ cannon benchmark /path/to/validation-benchmarks -f XBEN-001-24,XBEN-005-24
 
 ## Benchmarks
 
-Cannon includes a runner for the [XBOW validation benchmarks](https://github.com/xbow-org/xbow) — 104 Jeopardy-style CTF challenges covering 26 vulnerability classes across 3 difficulty levels.
+Mimick includes a runner for the [XBOW validation benchmarks](https://github.com/xbow-org/xbow) — 104 Jeopardy-style CTF challenges covering 26 vulnerability classes across 3 difficulty levels.
 
 ```
-cannon benchmark /path/to/validation-benchmarks --level 1
+mimick benchmark /path/to/validation-benchmarks --level 1
 
 ┌─────────────────────────────────────────────────────────────┐
 │                    XBOW Benchmark Results                    │
@@ -191,7 +191,7 @@ Score: 32/45 (71%)
 ## Architecture
 
 ```
-cannon scan example.com
+mimick scan example.com
          │
          ▼
 ┌─────────────────────────────────────────────┐
@@ -250,7 +250,7 @@ Each scan produces:
 
 | File | Description |
 |------|-------------|
-| `results/cannon_<target>_<timestamp>.md` | Markdown report with findings, proof, and remediation |
+| `results/mimick_<target>_<timestamp>.md` | Markdown report with findings, proof, and remediation |
 | `results/<run_id>.json` | Full attack graph — nodes, edges, events timeline |
 | `results/validation/<run_id>_validate.py` | Standalone script to re-verify all findings (stdlib only) |
 
