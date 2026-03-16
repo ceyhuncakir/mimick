@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./images/banner.png" alt="Mimick Banner" width="100%" />
+<img src="./images/banner.png" alt="Mimick Banner" width="50%" />
 
 # Mimick
 
