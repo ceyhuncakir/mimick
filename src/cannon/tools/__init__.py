@@ -20,4 +20,5 @@ from cannon.tools import (  # noqa: F401
     arjun,
     sqlmap,
     dalfox,
+    browser,
 )

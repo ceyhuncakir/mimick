@@ -83,12 +83,5 @@ class ArjunTool(Tool):
             },
         }
 
-    def parse_output(self, stdout: str) -> Any:
-        import json as _json
-        try:
-            return _json.loads(stdout)
-        except _json.JSONDecodeError:
-            return None
-
 
 registry.register(ArjunTool())

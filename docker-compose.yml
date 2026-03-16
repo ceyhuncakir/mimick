@@ -1,0 +1,12 @@
+services:
+  cannon:
+    build: .
+    env_file: .env
+    volumes:
+      - ./results:/app/results
+    ports:
+      - "8117:8117"
+    # Override to run a scan:
+    #   docker compose run cannon scan example.com
+    # Or launch the dashboard:
+    #   docker compose run --service-ports cannon web --host 0.0.0.0

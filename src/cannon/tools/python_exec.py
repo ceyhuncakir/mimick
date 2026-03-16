@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from cannon.config import settings
+from cannon.logger import get_logger
 from cannon.tools.base import Tool, ToolResult, registry
 
 
@@ -50,8 +51,6 @@ class PythonExecTool(Tool):
         return True
 
     async def run(self, **kwargs: Any) -> ToolResult:
-        from cannon.logger import get_logger
-
         log = get_logger(f"tool.{self.name}")
 
         code: str = kwargs["code"]
@@ -62,8 +61,11 @@ class PythonExecTool(Tool):
         workspace.mkdir(parents=True, exist_ok=True)
 
         script = tempfile.NamedTemporaryFile(
-            dir=workspace, prefix="cannon_", suffix=".py",
-            mode="w", delete=False,
+            dir=workspace,
+            prefix="cannon_",
+            suffix=".py",
+            mode="w",
+            delete=False,
         )
         script.write(code)
         script.close()
@@ -73,12 +75,14 @@ class PythonExecTool(Tool):
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.binary, str(script_path),
+                self.binary,
+                str(script_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout,
+                proc.communicate(),
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
             proc.kill()
@@ -96,7 +100,9 @@ class PythonExecTool(Tool):
 
         log.debug(
             "Exit code: %d | stdout: %d bytes | stderr: %d bytes",
-            proc.returncode or 0, len(stdout), len(stderr),
+            proc.returncode or 0,
+            len(stdout),
+            len(stderr),
         )
 
         return ToolResult(

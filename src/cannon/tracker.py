@@ -45,6 +45,7 @@ class AttackTracker:
         self._asset_seq = 0
         self._finding_seq = 0
         self._last_action_id: str | None = None
+        self._finding_keys: set[str] = set()
 
         # Root node
         self._add_node(GraphNode("target", "target", target, {"scope": scope}))
@@ -72,12 +73,14 @@ class AttackTracker:
 
     def record_reasoning(self, text: str, iteration: int) -> None:
         """Record the agent's reasoning text for an iteration."""
-        self._events.append({
-            "type": "reasoning",
-            "iteration": iteration,
-            "text": text[:2000],
-            "ts": datetime.now(timezone.utc).isoformat(),
-        })
+        self._events.append(
+            {
+                "type": "reasoning",
+                "iteration": iteration,
+                "text": text[:2000],
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     def record_tool_call(
         self,
@@ -90,16 +93,18 @@ class AttackTracker:
     ) -> None:
         """Record a tool execution and extract discovered assets/findings."""
         # Log every tool call to the event timeline
-        self._events.append({
-            "type": "tool_call",
-            "tool": tool_name,
-            "args": _sanitize_args(args),
-            "stdout": stdout[:5000],
-            "stderr": stderr[:2000] if stderr else "",
-            "success": success,
-            "iteration": iteration,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        })
+        self._events.append(
+            {
+                "type": "tool_call",
+                "tool": tool_name,
+                "args": _sanitize_args(args),
+                "stdout": stdout[:5000],
+                "stderr": stderr[:2000] if stderr else "",
+                "success": success,
+                "iteration": iteration,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
         # Skip non-action tools from the graph
         if tool_name == "vuln_lookup":
@@ -108,19 +113,21 @@ class AttackTracker:
         self._action_seq += 1
         action_id = f"action_{self._action_seq}_{tool_name}"
 
-        self._add_node(GraphNode(
-            id=action_id,
-            type="tool",
-            label=tool_name,
-            data={
-                "args": _sanitize_args(args),
-                "stdout": stdout[:5000],
-                "stderr": stderr[:2000] if stderr else "",
-                "success": success,
-                "iteration": iteration,
-                "seq": self._action_seq,
-            },
-        ))
+        self._add_node(
+            GraphNode(
+                id=action_id,
+                type="tool",
+                label=tool_name,
+                data={
+                    "args": _sanitize_args(args),
+                    "stdout": stdout[:5000],
+                    "stderr": stderr[:2000] if stderr else "",
+                    "success": success,
+                    "iteration": iteration,
+                    "seq": self._action_seq,
+                },
+            )
+        )
 
         # Edge: parent → this action
         parent = self._resolve_parent(tool_name, args)
@@ -135,6 +142,20 @@ class AttackTracker:
         if success:
             self._extract(action_id, tool_name, args, stdout)
 
+    def is_duplicate_finding(self, url: str, title: str) -> bool:
+        """Check if a finding with the same normalized key already exists."""
+        norm_url = re.sub(r"https?://", "", url).rstrip("/").lower()
+        norm_title = re.sub(
+            r"^(reflected|stored|blind|dom[- ]based)\s+",
+            "",
+            title.lower().strip(),
+        )
+        key = f"{norm_url}||{norm_title}"
+        if key in self._finding_keys:
+            return True
+        self._finding_keys.add(key)
+        return False
+
     def record_finding(
         self,
         title: str,
@@ -142,21 +163,30 @@ class AttackTracker:
         url: str,
         description: str = "",
         proof: str = "",
+        reproduction: list[dict] | None = None,
         impact: str = "",
         remediation: str = "",
         iteration: int = 0,
     ) -> None:
         """Record a confirmed vulnerability finding reported by the agent."""
         fid = self._make_finding_id()
-        self._add_node(GraphNode(fid, "finding", title, {
-            "severity": severity,
-            "url": url,
-            "description": description,
-            "proof": proof[:3000],
-            "impact": impact,
-            "remediation": remediation,
-            "iteration": iteration,
-        }))
+        self._add_node(
+            GraphNode(
+                fid,
+                "finding",
+                title,
+                {
+                    "severity": severity,
+                    "url": url,
+                    "description": description,
+                    "proof": proof[:3000],
+                    "reproduction": reproduction or [],
+                    "impact": impact,
+                    "remediation": remediation,
+                    "iteration": iteration,
+                },
+            )
+        )
 
         # Link to the last action that discovered it
         if self._last_action_id:
@@ -168,17 +198,19 @@ class AttackTracker:
             if asset_id in self._node_ids:
                 self._add_edge(asset_id, fid, "vulnerable")
 
-        self._events.append({
-            "type": "finding",
-            "title": title,
-            "severity": severity,
-            "url": url,
-            "description": description,
-            "proof": proof[:2000],
-            "impact": impact,
-            "iteration": iteration,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        })
+        self._events.append(
+            {
+                "type": "finding",
+                "title": title,
+                "severity": severity,
+                "url": url,
+                "description": description,
+                "proof": proof[:2000],
+                "impact": impact,
+                "iteration": iteration,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     def finish(self, status: str = "completed") -> None:
         self.finished_at = datetime.now(timezone.utc).isoformat()
@@ -249,12 +281,18 @@ class AttackTracker:
             fn(action_id, args, stdout)
 
     def _extract_subfinder(self, action_id: str, args: dict, stdout: str) -> None:
-        hosts = [l.strip() for l in stdout.splitlines() if l.strip() and "." in l]
+        hosts = [
+            line.strip() for line in stdout.splitlines() if line.strip() and "." in line
+        ]
         for host in hosts[:30]:
-            nid = self._add_node(GraphNode(
-                self._make_asset_id(host), "asset", host,
-                {"kind": "subdomain"},
-            ))
+            nid = self._add_node(
+                GraphNode(
+                    self._make_asset_id(host),
+                    "asset",
+                    host,
+                    {"kind": "subdomain"},
+                )
+            )
             self._add_edge(action_id, nid, "found")
 
     def _extract_httpx(self, action_id: str, args: dict, stdout: str) -> None:
@@ -275,7 +313,9 @@ class AttackTracker:
                 data["tech"] = obj["tech"]
             if obj.get("webserver"):
                 data["server"] = obj["webserver"]
-            nid = self._add_node(GraphNode(self._make_asset_id(url), "asset", url, data))
+            nid = self._add_node(
+                GraphNode(self._make_asset_id(url), "asset", url, data)
+            )
             self._add_edge(action_id, nid, "probed")
 
     def _extract_nuclei(self, action_id: str, args: dict, stdout: str) -> None:
@@ -289,11 +329,18 @@ class AttackTracker:
             name = info.get("name") or obj.get("template-id", "unknown")
             matched = obj.get("matched-at", "")
             fid = self._make_finding_id()
-            self._add_node(GraphNode(fid, "finding", name, {
-                "severity": severity,
-                "url": matched,
-                "template": obj.get("template-id", ""),
-            }))
+            self._add_node(
+                GraphNode(
+                    fid,
+                    "finding",
+                    name,
+                    {
+                        "severity": severity,
+                        "url": matched,
+                        "template": obj.get("template-id", ""),
+                    },
+                )
+            )
             self._add_edge(action_id, fid, severity)
             # Also link finding to the matched asset if it exists
             if matched:
@@ -302,12 +349,20 @@ class AttackTracker:
                     self._add_edge(asset_id, fid, "vulnerable")
 
     def _extract_katana(self, action_id: str, args: dict, stdout: str) -> None:
-        urls = [l.strip() for l in stdout.splitlines() if l.strip().startswith("http")]
+        urls = [
+            line.strip()
+            for line in stdout.splitlines()
+            if line.strip().startswith("http")
+        ]
         for url in urls[:30]:
-            nid = self._add_node(GraphNode(
-                self._make_asset_id(url), "asset", url,
-                {"kind": "endpoint"},
-            ))
+            nid = self._add_node(
+                GraphNode(
+                    self._make_asset_id(url),
+                    "asset",
+                    url,
+                    {"kind": "endpoint"},
+                )
+            )
             self._add_edge(action_id, nid, "crawled")
 
     def _extract_ffuf(self, action_id: str, args: dict, stdout: str) -> None:
@@ -318,20 +373,37 @@ class AttackTracker:
                 continue
             url = obj.get("url", "")
             if url:
-                nid = self._add_node(GraphNode(
-                    self._make_asset_id(url), "asset", url,
-                    {"kind": "endpoint", "status": obj.get("status", 0), "length": obj.get("length", 0)},
-                ))
+                nid = self._add_node(
+                    GraphNode(
+                        self._make_asset_id(url),
+                        "asset",
+                        url,
+                        {
+                            "kind": "endpoint",
+                            "status": obj.get("status", 0),
+                            "length": obj.get("length", 0),
+                        },
+                    )
+                )
                 self._add_edge(action_id, nid, "fuzzed")
 
     def _extract_nmap(self, action_id: str, args: dict, stdout: str) -> None:
         for m in re.finditer(r"(\d+)/(\w+)\s+open\s+(\S+)", stdout):
             port, proto, service = m.groups()
             label = f"{args.get('target', '?')}:{port}/{service}"
-            nid = self._add_node(GraphNode(
-                self._make_asset_id(label), "asset", label,
-                {"kind": "port", "port": int(port), "proto": proto, "service": service},
-            ))
+            nid = self._add_node(
+                GraphNode(
+                    self._make_asset_id(label),
+                    "asset",
+                    label,
+                    {
+                        "kind": "port",
+                        "port": int(port),
+                        "proto": proto,
+                        "service": service,
+                    },
+                )
+            )
             self._add_edge(action_id, nid, "open")
 
     def _extract_wafw00f(self, action_id: str, args: dict, stdout: str) -> None:
@@ -339,19 +411,27 @@ class AttackTracker:
         if "is behind" in lower:
             m = re.search(r"is behind\s+(.+?)(?:\s+WAF|\n|$)", stdout, re.IGNORECASE)
             waf_name = m.group(1).strip() if m else "Unknown WAF"
-            nid = self._add_node(GraphNode(
-                self._make_asset_id(f"waf_{waf_name}"), "asset", f"WAF: {waf_name}",
-                {"kind": "waf", "waf": waf_name},
-            ))
+            nid = self._add_node(
+                GraphNode(
+                    self._make_asset_id(f"waf_{waf_name}"),
+                    "asset",
+                    f"WAF: {waf_name}",
+                    {"kind": "waf", "waf": waf_name},
+                )
+            )
             self._add_edge(action_id, nid, "detected")
 
     def _extract_curl(self, action_id: str, args: dict, stdout: str) -> None:
         url = args.get("url", "")
         if url:
-            nid = self._add_node(GraphNode(
-                self._make_asset_id(url), "asset", url,
-                {"kind": "endpoint"},
-            ))
+            nid = self._add_node(
+                GraphNode(
+                    self._make_asset_id(url),
+                    "asset",
+                    url,
+                    {"kind": "endpoint"},
+                )
+            )
             self._add_edge(action_id, nid, "requested")
 
     def _extract_arjun(self, action_id: str, args: dict, stdout: str) -> None:
@@ -365,10 +445,14 @@ class AttackTracker:
                 params = data.get("params", []) if isinstance(data, dict) else []
                 if params:
                     label = f"{url} → {', '.join(params[:10])}"
-                    nid = self._add_node(GraphNode(
-                        self._make_asset_id(url), "asset", label,
-                        {"kind": "params", "url": url, "params": params},
-                    ))
+                    nid = self._add_node(
+                        GraphNode(
+                            self._make_asset_id(url),
+                            "asset",
+                            label,
+                            {"kind": "params", "url": url, "params": params},
+                        )
+                    )
                     self._add_edge(action_id, nid, "discovered")
 
     def _extract_sqlmap(self, action_id: str, args: dict, stdout: str) -> None:
@@ -379,11 +463,18 @@ class AttackTracker:
             param = args.get("param", "")
             title = f"SQL Injection: {param or 'param'} on {url}"
             fid = self._make_finding_id()
-            self._add_node(GraphNode(fid, "finding", title, {
-                "severity": "high",
-                "url": url,
-                "tool": "sqlmap",
-            }))
+            self._add_node(
+                GraphNode(
+                    fid,
+                    "finding",
+                    title,
+                    {
+                        "severity": "high",
+                        "url": url,
+                        "tool": "sqlmap",
+                    },
+                )
+            )
             self._add_edge(action_id, fid, "high")
             if url:
                 asset_id = self._make_asset_id(url)
@@ -405,17 +496,89 @@ class AttackTracker:
             if poc or "verified" in xss_type.lower():
                 title = f"XSS ({xss_type})" if xss_type else "XSS"
                 fid = self._make_finding_id()
-                self._add_node(GraphNode(fid, "finding", title, {
-                    "severity": "medium",
-                    "url": inject_url,
-                    "poc": poc[:500],
-                    "tool": "dalfox",
-                }))
+                self._add_node(
+                    GraphNode(
+                        fid,
+                        "finding",
+                        title,
+                        {
+                            "severity": "medium",
+                            "url": inject_url,
+                            "poc": poc[:500],
+                            "tool": "dalfox",
+                        },
+                    )
+                )
                 self._add_edge(action_id, fid, "medium")
                 if inject_url:
                     asset_id = self._make_asset_id(inject_url)
                     if asset_id in self._node_ids:
                         self._add_edge(asset_id, fid, "vulnerable")
+
+    # ── Query methods (used by dynamic context) ────────────────────────
+
+    def get_tech_summary(self) -> dict[str, list[str]]:
+        """Extract detected technologies from httpx asset nodes."""
+        tech_map: dict[str, list[str]] = {}
+        for node in self._nodes:
+            if node.type != "asset":
+                continue
+            tech = node.data.get("tech")
+            server = node.data.get("server")
+            if not tech and not server:
+                continue
+            items: list[str] = []
+            if isinstance(tech, list):
+                items.extend(tech)
+            elif isinstance(tech, str):
+                items.append(tech)
+            if server:
+                items.append(f"Server: {server}")
+            if items:
+                tech_map[node.label] = items
+        return tech_map
+
+    def get_waf_info(self) -> list[str]:
+        """Get detected WAF names."""
+        return [
+            node.data.get("waf", "Unknown")
+            for node in self._nodes
+            if node.type == "asset" and node.data.get("kind") == "waf"
+        ]
+
+    def get_discovered_endpoints(self) -> list[str]:
+        """Get list of discovered endpoint/host URLs."""
+        return [
+            node.label
+            for node in self._nodes
+            if node.type == "asset" and node.data.get("kind") in ("endpoint", "host")
+        ]
+
+    def get_findings_summary(self) -> list[dict[str, str]]:
+        """Get a brief summary of all recorded findings."""
+        return [
+            {
+                "title": node.label,
+                "severity": node.data.get("severity", ""),
+                "url": node.data.get("url", ""),
+            }
+            for node in self._nodes
+            if node.type == "finding"
+        ]
+
+    def get_discovered_params(self) -> dict[str, list[str]]:
+        """Get discovered parameters by URL."""
+        return {
+            node.data["url"]: node.data.get("params", [])
+            for node in self._nodes
+            if node.type == "asset"
+            and node.data.get("kind") == "params"
+            and node.data.get("url")
+        }
+
+    def node_count(self) -> int:
+        """Total number of nodes in the graph."""
+        return len(self._nodes)
 
 
 def _sanitize_args(args: dict) -> dict:

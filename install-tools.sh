@@ -158,12 +158,14 @@ if command -v wafw00f &>/dev/null; then
     warn "wafw00f is already installed at $(command -v wafw00f)"
 else
     info "Installing wafw00f..."
-    if command -v pipx &>/dev/null; then
+    if command -v uv &>/dev/null; then
+        uv tool install wafw00f
+    elif command -v pipx &>/dev/null; then
         pipx install wafw00f
     elif command -v pip3 &>/dev/null; then
         pip3 install wafw00f
     else
-        error "pip3 or pipx is required to install wafw00f."
+        error "uv, pipx, or pip3 is required to install wafw00f."
     fi
 fi
 
@@ -172,12 +174,14 @@ if command -v arjun &>/dev/null; then
     warn "arjun is already installed at $(command -v arjun)"
 else
     info "Installing arjun..."
-    if command -v pipx &>/dev/null; then
+    if command -v uv &>/dev/null; then
+        uv tool install arjun
+    elif command -v pipx &>/dev/null; then
         pipx install arjun
     elif command -v pip3 &>/dev/null; then
         pip3 install arjun
     else
-        error "pip3 or pipx is required to install arjun."
+        error "uv, pipx, or pip3 is required to install arjun."
     fi
 fi
 
@@ -204,6 +208,21 @@ WRAPPER
         info "sqlmap installed successfully."
     else
         warn "sqlmap installed to $SQLMAP_BIN — ensure ~/.local/bin is in your PATH."
+    fi
+fi
+
+# ─── Playwright (headless browser) ─────────────────────────────────
+info "Installing Playwright Chromium browser..."
+if command -v playwright &>/dev/null; then
+    warn "Playwright CLI already available at $(command -v playwright)"
+    playwright install chromium 2>/dev/null || warn "Could not install Chromium — run 'playwright install chromium' manually."
+else
+    if command -v uv &>/dev/null; then
+        uv run playwright install chromium 2>/dev/null || warn "Could not install Chromium via uv."
+    elif command -v pip3 &>/dev/null; then
+        pip3 install playwright && playwright install chromium 2>/dev/null || warn "Could not install Playwright."
+    else
+        warn "Playwright not found. Install with: pip install playwright && playwright install chromium"
     fi
 fi
 

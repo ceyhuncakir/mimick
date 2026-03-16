@@ -43,8 +43,5 @@ class SubfinderTool(Tool):
             },
         }
 
-    def parse_output(self, stdout: str) -> list[str]:
-        return [line.strip() for line in stdout.strip().splitlines() if line.strip()]
-
 
 registry.register(SubfinderTool())

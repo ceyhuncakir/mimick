@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import json
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
+
+from cannon.logger import get_logger
 
 
 @dataclass
@@ -19,7 +20,6 @@ class ToolResult:
     stdout: str
     stderr: str
     return_code: int
-    parsed: Any = None
 
     @property
     def success(self) -> bool:
@@ -66,8 +66,6 @@ class Tool(ABC):
 
     async def run(self, **kwargs: Any) -> ToolResult:
         """Execute the tool with the given arguments."""
-        from cannon.logger import get_logger
-
         log = get_logger(f"tool.{self.name}")
 
         args = self.build_args(**kwargs)
@@ -85,10 +83,12 @@ class Tool(ABC):
         stdout = stdout_bytes.decode(errors="replace")
         stderr = stderr_bytes.decode(errors="replace")
 
-        parsed = self.parse_output(stdout)
-
-        log.debug("Exit code: %d | stdout: %d bytes | stderr: %d bytes",
-                   proc.returncode or 0, len(stdout), len(stderr))
+        log.debug(
+            "Exit code: %d | stdout: %d bytes | stderr: %d bytes",
+            proc.returncode or 0,
+            len(stdout),
+            len(stderr),
+        )
 
         return ToolResult(
             tool_name=self.name,
@@ -96,26 +96,7 @@ class Tool(ABC):
             stdout=stdout,
             stderr=stderr,
             return_code=proc.returncode or 0,
-            parsed=parsed,
         )
-
-    def parse_output(self, stdout: str) -> Any:
-        """Parse tool output. Override for structured parsing."""
-        return None
-
-
-def _try_parse_jsonl(stdout: str) -> list[dict] | None:
-    """Try to parse newline-delimited JSON output."""
-    results = []
-    for line in stdout.strip().splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            results.append(json.loads(line))
-        except json.JSONDecodeError:
-            return None
-    return results if results else None
 
 
 class ToolRegistry:

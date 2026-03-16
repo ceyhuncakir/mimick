@@ -1,6 +1,5 @@
 """ffuf - fast web fuzzer for directory/file discovery and parameter fuzzing."""
 
-import json
 from typing import Any
 
 from cannon.tools.base import Tool, registry
@@ -15,7 +14,17 @@ class FfufTool(Tool):
     binary = "ffuf"
 
     def build_args(self, **kwargs: Any) -> list[str]:
-        args = ["-u", kwargs["url"], "-w", kwargs["wordlist"], "-of", "json", "-o", "/dev/stdout", "-s"]
+        args = [
+            "-u",
+            kwargs["url"],
+            "-w",
+            kwargs["wordlist"],
+            "-of",
+            "json",
+            "-o",
+            "/dev/stdout",
+            "-s",
+        ]
 
         if kwargs.get("method"):
             args.extend(["-X", kwargs["method"]])
@@ -104,12 +113,6 @@ class FfufTool(Tool):
                 "required": ["url", "wordlist"],
             },
         }
-
-    def parse_output(self, stdout: str) -> dict | None:
-        try:
-            return json.loads(stdout)
-        except json.JSONDecodeError:
-            return None
 
 
 registry.register(FfufTool())

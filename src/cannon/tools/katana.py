@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from cannon.tools.base import Tool, _try_parse_jsonl, registry
+from cannon.tools.base import Tool, registry
 
 
 class KatanaTool(Tool):
@@ -76,9 +76,6 @@ class KatanaTool(Tool):
                 "required": [],
             },
         }
-
-    def parse_output(self, stdout: str) -> list[dict] | None:
-        return _try_parse_jsonl(stdout)
 
 
 registry.register(KatanaTool())
