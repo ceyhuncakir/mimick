@@ -22,7 +22,7 @@ Mimick is an autonomous pentesting agent that chains 17 security tools with LLM 
 
 <div align="center">
 
-<video src="./assets/showcase.mp4" width="100%" autoplay loop muted playsinline></video>
+<video src="https://github.com/user-attachments/assets/f1a645ee-74a4-4698-b01a-43152be1f5e4" width="100%" autoplay loop muted playsinline></video>
 
 </div>
 
