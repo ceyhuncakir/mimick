@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 import ssl
 from typing import Any
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 # ── Constants ─────────────────────────────────────────────────────────
 
@@ -24,6 +24,13 @@ SSL_CTX.verify_mode = ssl.CERT_NONE
 
 _COOKIE_SPLIT_RE = re.compile(r",\s*(?=[A-Za-z_][A-Za-z0-9_]*=)")
 _PLACEHOLDER_RE = re.compile(r"REPLACE[_A-Z]*", re.IGNORECASE)
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    """Prevent urllib from following redirects so we can inspect 3xx status."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002
+        return None
 
 
 # ── HTTP request ──────────────────────────────────────────────────────
@@ -39,16 +46,27 @@ def http_request(
     """Fire an HTTP request and return (status, headers_dict, body).
 
     Handles both 2xx and error responses uniformly.
+    Does **not** follow redirects so 3xx status codes are visible.
     """
+    import urllib.request
+
     data = body.encode() if body else None
     req = Request(url, method=method, data=data)
     for k, v in (headers or {}).items():
         req.add_header(k, v)
+
+    https_handler = urllib.request.HTTPSHandler(context=SSL_CTX)
+    opener = build_opener(https_handler, _NoRedirect)
+
     try:
-        resp = urlopen(req, timeout=timeout, context=SSL_CTX)
+        resp = opener.open(req, timeout=timeout)
         resp_body = resp.read().decode(errors="replace")
         resp_hdrs = {k.lower(): v for k, v in resp.getheaders()}
         return resp.status, resp_hdrs, resp_body
+    except HTTPError as exc:
+        resp_body = exc.read().decode(errors="replace") if exc.fp else ""
+        resp_hdrs = {k.lower(): v for k, v in exc.headers.items()}
+        return exc.code, resp_hdrs, resp_body
     except URLError as exc:
         if hasattr(exc, "code"):
             resp_body = (

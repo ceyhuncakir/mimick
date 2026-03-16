@@ -1258,8 +1258,8 @@ Usage:
 """
 
 import json, re, ssl, sys, time
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 TIMEOUT = 12
 
@@ -1274,16 +1274,26 @@ _CTX.verify_mode = ssl.CERT_NONE
 RED, GREEN, YELLOW, BOLD, RESET = "\\033[91m", "\\033[92m", "\\033[93m", "\\033[1m", "\\033[0m"
 
 
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def http(url, method="GET", headers=None, body=None):
     data = body.encode() if body else None
     req = Request(url, method=method, data=data)
     for k, v in (headers or {{}}).items():
         req.add_header(k, v)
+    opener = build_opener(HTTPSHandler(context=_CTX), _NoRedirect)
     try:
-        resp = urlopen(req, timeout=TIMEOUT, context=_CTX)
+        resp = opener.open(req, timeout=TIMEOUT)
         rbody = resp.read().decode(errors="replace")
         rhdrs = {{k.lower(): v for k, v in resp.getheaders()}}
         return resp.status, rhdrs, rbody
+    except HTTPError as e:
+        rbody = e.read().decode(errors="replace") if e.fp else ""
+        rhdrs = {{k.lower(): v for k, v in e.headers.items()}}
+        return e.code, rhdrs, rbody
     except URLError as e:
         if hasattr(e, "code"):
             rbody = e.read().decode(errors="replace") if hasattr(e, "read") else ""

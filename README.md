@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./images/banner.png" alt="Mimick Banner" width="50%" />
+<img src="./assets/banner.png" alt="Mimick Banner" width="50%" />
 
 # Mimick
 
@@ -17,6 +17,14 @@ Mimick is an autonomous pentesting agent that chains 17 security tools with LLM 
 </div>
 
 ---
+
+## Showcase
+
+<div align="center">
+
+<video src="./assets/showcase.mp4" width="100%" autoplay loop muted playsinline></video>
+
+</div>
 
 ## Features
 
