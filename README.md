@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./images/banner.png" alt="Mimick Banner" width="100%" />
+
 # Mimick
 
 **Autonomous AI-powered web penetration testing agent**
