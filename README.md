@@ -113,6 +113,9 @@ mimick scan example.com -o ./results/acme-corp
 
 ### View results
 
+<video src="https://github.com/user-attachments/assets/5b078c31-ca4b-44a7-9d33-ab392560b559" width="100%" autoplay loop muted playsinline></video>
+
+
 ```bash
 # Launch the web dashboard
 mimick web
