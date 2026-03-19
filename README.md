@@ -255,7 +255,7 @@ Each scan produces:
 
 ## Contributing
 
-Contributions are welcome! Open an issue to report bugs or suggest features, or submit a pull request with your changes. I'll review all submissions personally.
+Contributions are welcome! Open an issue to report bugs or suggest features, or submit a pull request with your changes. I'll review all submissions personally. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 
