@@ -50,8 +50,8 @@ Mimick is an autonomous pentesting agent that chains 17 security tools with LLM 
 ```bash
 git clone https://github.com/yourusername/mimick.git
 cd mimick
-pip install -e .
-playwright install chromium
+uv sync
+uv run playwright install chromium
 ```
 
 ### External Tools
@@ -59,21 +59,8 @@ playwright install chromium
 Mimick works best with these tools installed. It gracefully skips any that are missing.
 
 ```bash
-# Core (recommended)
-sudo apt install nmap curl
-
-# ProjectDiscovery suite
-go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-go install github.com/projectdiscovery/httpx/cmd/httpx@latest
-go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-go install github.com/projectdiscovery/katana/cmd/katana@latest
-go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest
-
-# Scanners
-go install github.com/ffuf/ffuf/v2@latest
-pip install sqlmap arjun
-go install github.com/hahwul/dalfox/v2@latest
-pip install wafw00f
+# Install all tools automatically
+./install-tools.sh
 ```
 
 Check what's installed:
@@ -198,6 +185,8 @@ Score: 32/45 (71%)
     xss                       █████░░░░░ 5/10
 ```
 
+> **Note:** A full XBOW benchmark run is still pending. However, since XBOW's CTF-style challenges don't fully reflect real-world application security, we are actively working on building our own benchmark suite that better represents production environments.
+
 ## Architecture
 
 ```
@@ -263,6 +252,10 @@ Each scan produces:
 | `results/mimick_<target>_<timestamp>.md` | Markdown report with findings, proof, and remediation |
 | `results/<run_id>.json` | Full attack graph — nodes, edges, events timeline |
 | `results/validation/<run_id>_validate.py` | Standalone script to re-verify all findings (stdlib only) |
+
+## Contributing
+
+Contributions are welcome! Open an issue to report bugs or suggest features, or submit a pull request with your changes. I'll review all submissions personally.
 
 ## License
 
