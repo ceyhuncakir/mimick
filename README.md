@@ -195,7 +195,7 @@ Score: 32/45 (71%)
 ## Current Architecture
 
 <div align="center">
-<img src="./puml/architecture.png" alt="Mimick Architecture" width="100%" />
+<img src="./assets/architecture.png" alt="Mimick Architecture" width="100%" />
 </div>
 
 ### Key Design Decisions
