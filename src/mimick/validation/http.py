@@ -1,19 +1,11 @@
-"""Shared HTTP helpers for finding validation.
-
-Provides a lightweight HTTP client, cookie extraction/injection, and
-expect-condition checking used by both the internal validator and the
-generated standalone validation scripts.
-"""
-
 from __future__ import annotations
 
 import re
 import ssl
+import urllib.request
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-
-# ── Constants ─────────────────────────────────────────────────────────
 
 VALIDATION_TIMEOUT = 12
 VALIDATION_DELAY = 0.3
@@ -27,13 +19,8 @@ _PLACEHOLDER_RE = re.compile(r"REPLACE[_A-Z]*", re.IGNORECASE)
 
 
 class _NoRedirect(HTTPRedirectHandler):
-    """Prevent urllib from following redirects so we can inspect 3xx status."""
-
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002
         return None
-
-
-# ── HTTP request ──────────────────────────────────────────────────────
 
 
 def http_request(
@@ -43,13 +30,7 @@ def http_request(
     body: str | None = None,
     timeout: int = VALIDATION_TIMEOUT,
 ) -> tuple[int, dict[str, str], str]:
-    """Fire an HTTP request and return (status, headers_dict, body).
-
-    Handles both 2xx and error responses uniformly.
-    Does **not** follow redirects so 3xx status codes are visible.
-    """
-    import urllib.request
-
+    """Fire an HTTP request and return (status, headers_dict, body)."""
     data = body.encode() if body else None
     req = Request(url, method=method, data=data)
     for k, v in (headers or {}).items():
@@ -81,11 +62,7 @@ def http_request(
         raise
 
 
-# ── Cookie helpers ────────────────────────────────────────────────────
-
-
 def extract_cookies(resp_hdrs: dict[str, str]) -> dict[str, str]:
-    """Parse Set-Cookie header(s) into a {name: value} dict."""
     cookies: dict[str, str] = {}
     raw = resp_hdrs.get("set-cookie", "")
     if not raw:
@@ -99,17 +76,10 @@ def extract_cookies(resp_hdrs: dict[str, str]) -> dict[str, str]:
 
 
 def build_cookie_header(cookies: dict[str, str]) -> str:
-    """Build a ``Cookie`` header value from a cookie jar dict."""
     return "; ".join(f"{k}={v}" for k, v in cookies.items())
 
 
 def inject_cookies(headers: dict[str, str], session_cookies: dict[str, str]) -> None:
-    """Inject session cookies into *headers* in-place.
-
-    * No ``Cookie`` header → add one from *session_cookies*.
-    * ``Cookie`` contains ``REPLACE`` placeholders → substitute.
-    * ``Cookie`` is a real value → leave untouched.
-    """
     if not session_cookies:
         return
 
@@ -126,16 +96,13 @@ def inject_cookies(headers: dict[str, str], session_cookies: dict[str, str]) -> 
         headers[cookie_key] = cookie_val
 
 
-# ── Expect checking ───────────────────────────────────────────────────
-
-
 def check_expect(
     expect: dict[str, Any],
     status: int,
     headers: dict[str, str],
     body: str,
 ) -> tuple[bool, str]:
-    """Check a single expect dict against a response.  Returns ``(ok, detail)``."""
+    """Check a single expect dict against a response. Returns (ok, detail)."""
     passed: list[str] = []
     failed: list[str] = []
 

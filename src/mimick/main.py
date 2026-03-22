@@ -1,5 +1,3 @@
-"""CLI entrypoint for Mimick."""
-
 from __future__ import annotations
 
 import asyncio
@@ -7,12 +5,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import click
+import uvicorn
 from dotenv import load_dotenv
 from rich.console import Console
 
+from mimick.agent.core import run_agent
+from mimick.benchmark.runner import (
+    discover_benchmarks,
+    filter_benchmarks,
+    print_summary,
+    run_benchmarks,
+    save_results,
+)
 from mimick.config import settings
 from mimick.logger import get_logger, setup_logging
 from mimick.output.reporter import save_report
+from mimick.tools import registry
+from mimick.web.app import create_app
 
 console = Console()
 log = get_logger("cli")
@@ -91,7 +100,6 @@ def scan(
     if output_dir:
         settings.output_dir = Path(output_dir)
 
-    # Set up file logging
     log_file = None
     if settings.log_file:
         settings.output_dir.mkdir(parents=True, exist_ok=True)
@@ -116,8 +124,6 @@ def scan(
     if log_file:
         log.info("Log file: %s", log_file)
 
-    from mimick.agent.core import run_agent
-
     report, _tracker = asyncio.run(
         run_agent(
             target=target,
@@ -131,7 +137,6 @@ def scan(
         path = save_report(target, report, run_id=_tracker.run_id)
         log.info("Report saved to %s", path)
         console.print(f"\n[bold]Report saved to:[/bold] {path}")
-        # Show validation script path if it exists
         script_path = (
             settings.output_dir / "validation" / f"{_tracker.run_id}_validate.py"
         )
@@ -198,14 +203,6 @@ def benchmark(
 
         mimick benchmark /path/to/validation-benchmarks -c 3 -i 20
     """
-    from mimick.benchmark.runner import (
-        discover_benchmarks,
-        filter_benchmarks,
-        print_summary,
-        run_benchmarks,
-        save_results,
-    )
-
     setup_logging(level="INFO")
     if model:
         settings.model = model
@@ -216,7 +213,6 @@ def benchmark(
     specs = discover_benchmarks(bench_path)
     console.print(f"Found [bold]{len(specs)}[/bold] benchmarks in {bench_path}")
 
-    # Apply filters
     id_list = [i.strip() for i in bench_ids.split(",")] if bench_ids else None
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
     lvl_list = [int(v.strip()) for v in levels.split(",")] if levels else None
@@ -245,8 +241,6 @@ def benchmark(
 def tools() -> None:
     """List available security tools and their install status."""
     setup_logging(level=settings.log_level)
-
-    from mimick.tools import registry
 
     console.print("\n[bold]Security Tools[/bold]\n")
     for tool in registry.all():
@@ -282,9 +276,6 @@ def web(port: int, host: str, output_dir: str | None) -> None:
 
         mimick web -o ./results/acme-corp
     """
-    import uvicorn
-    from mimick.web.app import create_app
-
     if output_dir:
         settings.output_dir = Path(output_dir)
 

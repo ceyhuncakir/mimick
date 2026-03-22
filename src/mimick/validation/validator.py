@@ -1,22 +1,3 @@
-"""Dynamic finding validation — replays reproduction steps from each finding.
-
-Each finding carries a ``reproduction`` list of HTTP request steps with
-expected outcomes.  The validator replays every step with a fresh request
-and checks the ``expect`` conditions.
-
-Session cookies are automatically propagated between steps so that
-multi-step flows (register -> login -> exploit) work correctly.
-
-Only the **last step** determines CONFIRMED/UNCONFIRMED — earlier steps
-are setup (session establishment) and their failures are tolerated.
-
-Statuses:
-  CONFIRMED   — last reproduction step passed its expect checks
-  UNCONFIRMED — last reproduction step failed
-  SKIPPED     — no reproduction steps were provided
-  ERROR       — request failed entirely
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -35,17 +16,11 @@ from mimick.validation.http import (
 log = get_logger("validator")
 
 
-# ── Step replay ───────────────────────────────────────────────────────
-
-
 def _replay_step(
     step: dict[str, Any],
     session_cookies: dict[str, str],
 ) -> tuple[bool, str, dict[str, str]]:
-    """Replay a single reproduction step.
-
-    Returns ``(passed, detail, updated_cookies)``.
-    """
+    """Replay a single reproduction step. Returns (passed, detail, updated_cookies)."""
     method = step.get("method", "GET").upper()
     url = step.get("url", "")
     headers = dict(step.get("headers") or {})
@@ -67,10 +42,7 @@ def _replay_step(
 
 
 def _validate_one(node: GraphNode) -> tuple[str, str]:
-    """Validate one finding by replaying its reproduction steps.
-
-    Only the **last step** determines the verdict.
-    """
+    """Validate one finding by replaying its reproduction steps."""
     steps: list[dict] = node.data.get("reproduction") or []
 
     if not steps:
@@ -100,17 +72,8 @@ def _validate_one(node: GraphNode) -> tuple[str, str]:
     return "UNCONFIRMED", combined
 
 
-# ── Public API ────────────────────────────────────────────────────────
-
-
 async def validate_findings(tracker: AttackTracker) -> list[dict[str, str]]:
-    """Replay reproduction steps for every finding in *tracker*.
-
-    Updates each finding node in-place with ``validation_status`` and
-    ``validation_detail``.
-
-    Returns list of result dicts.
-    """
+    """Replay reproduction steps for every finding in the tracker."""
     findings = [n for n in tracker._nodes if n.type == "finding"]
     if not findings:
         log.info("No findings to validate")

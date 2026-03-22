@@ -1,5 +1,4 @@
 .venv/
-.env
 .git/
 .claude/
 __pycache__/

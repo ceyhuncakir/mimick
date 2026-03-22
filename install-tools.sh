@@ -86,16 +86,17 @@ install_from_github() {
         tar xzf "$tmpdir/archive.zip" -C "$tmpdir"
     fi
 
-    # Move binary to ~/go/bin (create if needed)
+    # Find and move binary to ~/go/bin
     mkdir -p "$HOME/go/bin"
-    if [[ -f "$tmpdir/$name" ]]; then
-        mv "$tmpdir/$name" "$HOME/go/bin/$name"
-        chmod +x "$HOME/go/bin/$name"
-        info "$name installed to ~/go/bin/$name"
-    else
+    local binary
+    binary=$(find "$tmpdir" -maxdepth 1 -type f -name "${name}*" ! -name "*.zip" ! -name "*.tar.gz" ! -name "*.md" ! -name "*.txt" | head -1)
+    if [[ -z "$binary" ]]; then
         error "Could not find $name binary in extracted archive"
         return 1
     fi
+    mv "$binary" "$HOME/go/bin/$name"
+    chmod +x "$HOME/go/bin/$name"
+    info "$name installed to ~/go/bin/$name"
 }
 
 # ─── Check prerequisites ─────────────────────────────────────────────
@@ -132,7 +133,7 @@ else
     install_from_github ffuf "ffuf/ffuf" \
         "https://github.com/ffuf/ffuf/releases/download/{tag}/ffuf_{version}_{os}_{arch}.tar.gz"
     install_from_github dalfox "hahwul/dalfox" \
-        "https://github.com/hahwul/dalfox/releases/download/{tag}/dalfox_{version}_{os}_{arch}.tar.gz"
+        "https://github.com/hahwul/dalfox/releases/download/{tag}/dalfox-{os}-{arch}.tar.gz"
 fi
 
 # ─── nmap (system package) ───────────────────────────────────────────
@@ -166,6 +167,22 @@ else
         pip3 install wafw00f
     else
         error "uv, pipx, or pip3 is required to install wafw00f."
+    fi
+fi
+
+# ─── flask-unsign (Python) ─────────────────────────────────────────
+if command -v flask-unsign &>/dev/null; then
+    warn "flask-unsign is already installed at $(command -v flask-unsign)"
+else
+    info "Installing flask-unsign..."
+    if command -v uv &>/dev/null; then
+        uv tool install flask-unsign
+    elif command -v pipx &>/dev/null; then
+        pipx install flask-unsign
+    elif command -v pip3 &>/dev/null; then
+        pip3 install flask-unsign
+    else
+        error "uv, pipx, or pip3 is required to install flask-unsign."
     fi
 fi
 
@@ -231,7 +248,7 @@ echo ""
 info "Verifying installations..."
 echo ""
 
-tools=(subfinder httpx nuclei katana interactsh-client ffuf dalfox nmap wafw00f arjun sqlmap)
+tools=(subfinder httpx nuclei katana interactsh-client ffuf dalfox nmap wafw00f flask-unsign arjun sqlmap)
 all_ok=true
 for tool in "${tools[@]}"; do
     if command -v "$tool" &>/dev/null; then

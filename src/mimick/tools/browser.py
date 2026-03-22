@@ -1,5 +1,3 @@
-"""browser - Headless browser for rendering JavaScript-heavy pages via Playwright."""
-
 from __future__ import annotations
 
 import json
@@ -9,6 +7,13 @@ from urllib.parse import urlparse
 from mimick.config import settings
 from mimick.logger import get_logger
 from mimick.tools.base import Tool, ToolResult, registry
+
+try:
+    from playwright.async_api import async_playwright
+
+    _HAS_PLAYWRIGHT = True
+except ImportError:
+    _HAS_PLAYWRIGHT = False
 
 
 class BrowserTool(Tool):
@@ -22,66 +27,8 @@ class BrowserTool(Tool):
     )
     binary = ""
 
-    def build_args(self, **kwargs: Any) -> list[str]:
-        raise NotImplementedError("BrowserTool overrides run() directly.")
-
     def is_available(self) -> bool:
-        try:
-            import playwright  # noqa: F401
-
-            return True
-        except ImportError:
-            return False
-
-    def openai_schema(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL to render in the headless browser.",
-                    },
-                    "action": {
-                        "type": "string",
-                        "description": (
-                            "Action to perform: "
-                            "'get_rendered_html' - return the full rendered DOM HTML after JS execution, "
-                            "'extract_info' - return rendered text, all links, JS libraries with versions, console logs, and cookies, "
-                            "'execute_js' - run custom JavaScript in the page and return the result, "
-                            "'screenshot' - take a screenshot and save to results dir."
-                        ),
-                        "default": "extract_info",
-                    },
-                    "js_code": {
-                        "type": "string",
-                        "description": "JavaScript code to execute in the page context (only for action='execute_js').",
-                    },
-                    "wait_for": {
-                        "type": "string",
-                        "description": (
-                            "CSS selector to wait for before extracting content. "
-                            "Use when you know a specific element should be rendered by JS."
-                        ),
-                    },
-                    "cookie": {
-                        "type": "string",
-                        "description": (
-                            "Cookie string to set before navigating (format: 'name=value; name2=value2'). "
-                            "Use for authenticated browsing."
-                        ),
-                    },
-                    "timeout": {
-                        "type": "integer",
-                        "description": "Page load timeout in milliseconds (default: 15000).",
-                        "default": 15000,
-                    },
-                },
-                "required": ["url"],
-            },
-        }
+        return _HAS_PLAYWRIGHT
 
     async def run(self, **kwargs: Any) -> ToolResult:
         log = get_logger(f"tool.{self.name}")
@@ -93,9 +40,7 @@ class BrowserTool(Tool):
         cookie_str: str | None = kwargs.get("cookie")
         timeout: int = kwargs.get("timeout", 15000)
 
-        try:
-            from playwright.async_api import async_playwright
-        except ImportError:
+        if not _HAS_PLAYWRIGHT:
             return ToolResult(
                 tool_name=self.name,
                 command=f"browser {action} {url}",
@@ -119,7 +64,6 @@ class BrowserTool(Tool):
                     user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 )
 
-                # Set cookies if provided
                 if cookie_str:
                     cookies = self._parse_cookies(cookie_str, url)
                     if cookies:
@@ -127,17 +71,14 @@ class BrowserTool(Tool):
 
                 page = await context.new_page()
 
-                # Capture console messages
                 page.on(
                     "console",
                     lambda msg: console_messages.append(f"[{msg.type}] {msg.text}"),
                 )
 
-                # Navigate
                 try:
                     await page.goto(url, timeout=timeout, wait_until="networkidle")
                 except Exception:
-                    # Fallback to domcontentloaded if networkidle times out
                     try:
                         await page.goto(
                             url, timeout=timeout, wait_until="domcontentloaded"
@@ -152,14 +93,12 @@ class BrowserTool(Tool):
                             return_code=1,
                         )
 
-                # Wait for specific element if requested
                 if wait_for:
                     try:
                         await page.wait_for_selector(wait_for, timeout=5000)
                     except Exception:
-                        pass  # Continue anyway
+                        pass
 
-                # Small extra wait for JS to finish rendering
                 await page.wait_for_timeout(1000)
 
                 if action == "get_rendered_html":
@@ -168,7 +107,7 @@ class BrowserTool(Tool):
                     result = await self._execute_js(page, js_code)
                 elif action == "screenshot":
                     result = await self._screenshot(page, url)
-                else:  # extract_info
+                else:
                     result = await self._extract_info(page, console_messages)
 
                 await browser.close()
@@ -192,7 +131,6 @@ class BrowserTool(Tool):
             )
 
     def _parse_cookies(self, cookie_str: str, url: str) -> list[dict]:
-        """Parse 'name=value; name2=value2' into Playwright cookie format."""
         parsed = urlparse(url)
         domain = parsed.hostname or ""
         cookies = []
@@ -211,9 +149,7 @@ class BrowserTool(Tool):
         return cookies
 
     async def _get_rendered_html(self, page: Any) -> str:
-        """Return the full rendered DOM HTML."""
         html = await page.content()
-        # Truncate if too large for LLM context
         if len(html) > 50000:
             html = (
                 html[:50000] + f"\n\n... (truncated, {len(html) - 50000} chars omitted)"
@@ -221,7 +157,6 @@ class BrowserTool(Tool):
         return html
 
     async def _execute_js(self, page: Any, js_code: str | None) -> str:
-        """Execute custom JavaScript and return the result."""
         if not js_code:
             return "Error: js_code parameter is required for action='execute_js'"
         try:
@@ -231,7 +166,6 @@ class BrowserTool(Tool):
             return f"JavaScript execution error: {e}"
 
     async def _screenshot(self, page: Any, url: str) -> str:
-        """Take a screenshot and save it."""
         screenshots_dir = settings.output_dir / "screenshots"
         screenshots_dir.mkdir(parents=True, exist_ok=True)
 
@@ -242,23 +176,17 @@ class BrowserTool(Tool):
         return f"Screenshot saved to {path}"
 
     async def _extract_info(self, page: Any, console_messages: list[str]) -> str:
-        """Extract rendered text, links, JS libraries, cookies, and console output."""
-
-        # Extract comprehensive page info via JavaScript
         info = await page.evaluate("""() => {
             const result = {};
 
-            // Page title
             result.title = document.title;
 
-            // All links on the page
             result.links = [...new Set(
                 Array.from(document.querySelectorAll('a[href]'))
                     .map(a => a.href)
                     .filter(h => h && !h.startsWith('javascript:'))
             )].slice(0, 100);
 
-            // All forms
             result.forms = Array.from(document.querySelectorAll('form')).map(f => ({
                 action: f.action,
                 method: f.method,
@@ -268,27 +196,21 @@ class BrowserTool(Tool):
                 })),
             }));
 
-            // Script sources
             result.scripts = Array.from(document.querySelectorAll('script[src]'))
                 .map(s => s.src).slice(0, 50);
 
-            // Detect JS libraries and versions
             const libs = [];
 
-            // AngularJS
             if (window.angular) {
                 libs.push({name: 'AngularJS', version: window.angular.version ? window.angular.version.full : 'unknown'});
             }
-            // Angular 2+
             const ngVersion = document.querySelector('[ng-version]');
             if (ngVersion) {
                 libs.push({name: 'Angular', version: ngVersion.getAttribute('ng-version')});
             }
-            // jQuery
             if (window.jQuery) {
                 libs.push({name: 'jQuery', version: window.jQuery.fn ? window.jQuery.fn.jquery : 'unknown'});
             }
-            // React
             const reactRoot = document.querySelector('[data-reactroot]') || document.querySelector('#root');
             if (reactRoot && reactRoot._reactRootContainer) {
                 libs.push({name: 'React', version: 'detected (version in React DevTools)'});
@@ -296,27 +218,22 @@ class BrowserTool(Tool):
             if (window.React) {
                 libs.push({name: 'React', version: window.React.version || 'unknown'});
             }
-            // Vue
             if (window.Vue) {
                 libs.push({name: 'Vue.js', version: window.Vue.version || 'unknown'});
             }
             if (window.__VUE__) {
                 libs.push({name: 'Vue.js', version: 'detected'});
             }
-            // DOMPurify
             if (window.DOMPurify) {
                 libs.push({name: 'DOMPurify', version: window.DOMPurify.version || 'unknown'});
             }
-            // Lodash
             if (window._) {
                 libs.push({name: 'Lodash/Underscore', version: window._.VERSION || 'unknown'});
             }
-            // Bootstrap
             if (window.bootstrap) {
                 libs.push({name: 'Bootstrap', version: window.bootstrap.Alert ? window.bootstrap.Alert.VERSION || 'unknown' : 'unknown'});
             }
 
-            // Also scan script tags and comments for version strings
             const allScripts = Array.from(document.querySelectorAll('script'));
             const versionPatterns = [
                 /angular[.\\/-]v?(\\d+\\.\\d+\\.\\d+)/i,
@@ -343,20 +260,15 @@ class BrowserTool(Tool):
 
             result.libraries = libs;
 
-            // Rendered text content (truncated)
             result.body_text = document.body ? document.body.innerText.slice(0, 10000) : '';
 
-            // Meta tags
             result.meta = Array.from(document.querySelectorAll('meta')).map(m => ({
                 name: m.name || m.getAttribute('property') || m.httpEquiv || '',
                 content: m.content || '',
             })).filter(m => m.name);
 
-            // Check for AngularJS template injection markers
-            const bodyHtml = document.body ? document.body.innerHTML : '';
             result.template_injection_markers = [];
             if (bodyHtml.includes('49') && bodyHtml.match(/\\b49\\b/)) {
-                // Check if {{7*7}} was evaluated
                 result.template_injection_markers.push('Possible CSTI: found "49" in rendered HTML (could be {{7*7}} evaluation)');
             }
             if (bodyHtml.match(/ng-app|ng-controller|ng-bind/)) {
@@ -366,7 +278,6 @@ class BrowserTool(Tool):
             return result;
         }""")
 
-        # Get cookies
         cookies = await page.context.cookies()
         cookie_info = []
         for c in cookies:
@@ -393,7 +304,6 @@ class BrowserTool(Tool):
                 }
             )
 
-        # Build output
         parts = []
         parts.append(f"=== Page Title: {info.get('title', 'N/A')} ===\n")
 

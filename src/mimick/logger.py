@@ -1,5 +1,3 @@
-"""Centralized logging for Mimick using Rich."""
-
 import logging
 from pathlib import Path
 
@@ -31,13 +29,7 @@ FILE_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def setup_logging(level: str = "INFO", log_file: Path | None = None) -> None:
-    """Configure logging for the entire application.
-
-    Args:
-        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
-        log_file: Optional path to a log file. If provided, all logs
-                  (including DEBUG) are written to this file.
-    """
+    """Configure logging for the entire application."""
     log_level = getattr(logging, level.upper(), logging.INFO)
 
     rich_handler = RichHandler(
@@ -56,7 +48,6 @@ def setup_logging(level: str = "INFO", log_file: Path | None = None) -> None:
     root.handlers.clear()
     root.addHandler(rich_handler)
 
-    # File handler - always logs DEBUG for full audit trail
     if log_file:
         log_file.parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
@@ -66,7 +57,6 @@ def setup_logging(level: str = "INFO", log_file: Path | None = None) -> None:
         )
         root.addHandler(file_handler)
 
-    # Quiet noisy third-party loggers
     logging.getLogger("litellm").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)

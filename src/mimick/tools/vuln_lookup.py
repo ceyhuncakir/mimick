@@ -1,5 +1,3 @@
-"""vuln_lookup - Search the vulnerability knowledge base for exploitation guidance."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,7 +7,6 @@ from mimick.tools.base import Tool, ToolResult, registry
 
 DOCS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "docs"
 
-# ── Alias map: common shorthand → directory name ─────────────────────
 ALIASES: dict[str, str] = {
     "sqli": "SQL Injection",
     "sql": "SQL Injection",
@@ -85,7 +82,6 @@ ALIASES: dict[str, str] = {
 
 
 def _list_categories() -> list[str]:
-    """Return sorted list of vulnerability category names."""
     if not DOCS_DIR.is_dir():
         return []
     return sorted(
@@ -94,21 +90,17 @@ def _list_categories() -> list[str]:
 
 
 def _find_category(query: str) -> Path | None:
-    """Find the best matching category directory for a query."""
     q = query.lower().strip()
 
-    # 1. Exact alias match
     if q in ALIASES:
         candidate = DOCS_DIR / ALIASES[q]
         if candidate.is_dir():
             return candidate
 
-    # 2. Exact directory name match (case-insensitive)
     for d in DOCS_DIR.iterdir():
         if d.is_dir() and d.name.lower() == q:
             return d
 
-    # 3. Substring match on directory name
     matches = []
     for d in DOCS_DIR.iterdir():
         if d.is_dir() and q in d.name.lower():
@@ -116,7 +108,6 @@ def _find_category(query: str) -> Path | None:
     if len(matches) == 1:
         return matches[0]
 
-    # 4. Word overlap scoring
     query_words = set(q.split())
     best_score = 0
     best_dir = None
@@ -135,7 +126,6 @@ def _find_category(query: str) -> Path | None:
 
 
 def _find_subfile(category_dir: Path, query: str) -> Path | None:
-    """Find a specific sub-file within a category (e.g. 'mysql' in SQL Injection/)."""
     q = query.lower().strip()
     md_files = list(category_dir.glob("*.md"))
 
@@ -149,7 +139,6 @@ def _find_subfile(category_dir: Path, query: str) -> Path | None:
 
 
 def _read_md(path: Path, max_chars: int = 30000) -> str:
-    """Read a markdown file, truncating if too large for LLM context."""
     text = path.read_text(errors="replace")
     if len(text) <= max_chars:
         return text
@@ -169,49 +158,13 @@ class VulnLookupTool(Tool):
     )
     binary = ""
 
-    def build_args(self, **kwargs: Any) -> list[str]:
-        raise NotImplementedError
-
     def is_available(self) -> bool:
         return DOCS_DIR.is_dir()
-
-    def openai_schema(self) -> dict[str, Any]:
-        categories = _list_categories()
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": (
-                            "Vulnerability type or subtopic to look up. "
-                            "Examples: 'sqli', 'xss', 'ssrf', 'jwt', 'idor', "
-                            "'mysql injection', 'blind sqli', 'oauth', 'cors', "
-                            "'deserialization', 'prototype pollution', 'race condition'. "
-                            f"Categories: {', '.join(categories)}"
-                        ),
-                    },
-                    "subtopic": {
-                        "type": "string",
-                        "description": (
-                            "Optional: specific subtopic within a category. "
-                            "E.g. for SQL Injection: 'mysql', 'postgresql', 'sqlmap'. "
-                            "For XSS: 'dom based', 'filter bypass'. "
-                            "If omitted, returns the main overview/README."
-                        ),
-                    },
-                },
-                "required": ["query"],
-            },
-        }
 
     async def run(self, **kwargs: Any) -> ToolResult:
         query: str = kwargs["query"]
         subtopic: str | None = kwargs.get("subtopic")
 
-        # Find the matching category
         category_dir = _find_category(query)
 
         if not category_dir:
@@ -225,12 +178,10 @@ class VulnLookupTool(Tool):
                 return_code=1,
             )
 
-        # List available sub-files in this category
         sub_files = sorted(
             f.stem for f in category_dir.glob("*.md") if f.name != "README.md"
         )
 
-        # If subtopic requested, look for a matching sub-file
         if subtopic:
             sub_path = _find_subfile(category_dir, subtopic)
             if sub_path:
@@ -244,7 +195,6 @@ class VulnLookupTool(Tool):
                     stderr="",
                     return_code=0,
                 )
-            # Subtopic not found — fall through to README but mention it
             readme = category_dir / "README.md"
             if readme.is_file():
                 content = _read_md(readme)
@@ -260,7 +210,6 @@ class VulnLookupTool(Tool):
                     return_code=0,
                 )
 
-        # Default: return the README (main overview)
         readme = category_dir / "README.md"
         if readme.is_file():
             content = _read_md(readme)
@@ -277,7 +226,6 @@ class VulnLookupTool(Tool):
                 return_code=0,
             )
 
-        # No README — return first available file
         md_files = sorted(category_dir.glob("*.md"))
         if md_files:
             content = _read_md(md_files[0])

@@ -1,5 +1,3 @@
-"""Report generation and output management."""
-
 from datetime import datetime, timezone
 from pathlib import Path
 

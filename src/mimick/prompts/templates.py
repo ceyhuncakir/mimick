@@ -1,34 +1,29 @@
-"""Prompt templates for specific pentesting tasks and workflows."""
+from __future__ import annotations
 
-RECON_PLAN = """\
-Starting recon on the target.
+from pathlib import Path
 
-Plan:
-1. Enumerate subdomains with subfinder
-2. Probe live hosts with httpx (status codes, tech, titles)
-3. WAF detection with wafw00f
-4. Port scan high-value hosts with nmap
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "prompts"
 
-Goal: map the attack surface before probing for bugs.\
-"""
 
-DISCOVERY_PLAN = """\
-Recon complete. Live hosts: {host_count}. Tech: {technologies}.
+def _load(name: str) -> str:
+    return (_PROMPTS_DIR / name).read_text(encoding="utf-8")
 
-Plan:
-1. Crawl the app with katana (endpoints, JS, API routes)
-2. Fuzz promising hosts with ffuf (directories, files)
 
-Goal: find hidden endpoints and parameters to test.\
-"""
+def recon_plan() -> str:
+    return _load("recon_plan.md")
 
-VULN_SCAN_PLAN = """\
-Discovery complete. Targets: {targets}. Tech: {technologies}.
 
-Plan:
-1. Run nuclei with templates matching the detected tech stack
-2. Targeted manual testing on interesting endpoints
-3. Custom scripts for business logic testing
+def discovery_plan(host_count: int, technologies: str) -> str:
+    return (
+        _load("discovery_plan.md")
+        .replace("{host_count}", str(host_count))
+        .replace("{technologies}", technologies)
+    )
 
-Goal: find exploitable vulnerabilities.\
-"""
+
+def vuln_scan_plan(targets: str, technologies: str) -> str:
+    return (
+        _load("vuln_scan_plan.md")
+        .replace("{targets}", targets)
+        .replace("{technologies}", technologies)
+    )

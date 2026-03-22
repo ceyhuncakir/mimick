@@ -1,5 +1,3 @@
-"""FastAPI web app — serves the attack graph dashboard."""
-
 from __future__ import annotations
 
 import json
@@ -15,10 +13,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 def create_app(results_dir: Path) -> FastAPI:
     app = FastAPI(title="Mimick", docs_url=None, redoc_url=None)
 
-    # ── API ───────────────────────────────────────────────────────────
-
     def _find_all_json() -> list[Path]:
-        """Find all mimick graph JSON files in results dir and subdirs."""
         if not results_dir.is_dir():
             return []
         return sorted(results_dir.rglob("mimick_*.json"), reverse=True)
@@ -56,8 +51,6 @@ def create_app(results_dir: Path) -> FastAPI:
         if not path:
             raise HTTPException(404, f"Run '{run_id}' not found")
         return json.loads(path.read_text())
-
-    # ── Frontend ──────────────────────────────────────────────────────
 
     @app.get("/")
     def index() -> HTMLResponse:

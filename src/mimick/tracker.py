@@ -1,5 +1,3 @@
-"""Attack graph tracker — records the agent's actions as a directed graph."""
-
 from __future__ import annotations
 
 import json
@@ -13,7 +11,7 @@ from typing import Any
 @dataclass
 class GraphNode:
     id: str
-    type: str  # target, tool, asset, finding
+    type: str
     label: str
     data: dict = field(default_factory=dict)
 
@@ -47,10 +45,7 @@ class AttackTracker:
         self._last_action_id: str | None = None
         self._finding_keys: set[str] = set()
 
-        # Root node
         self._add_node(GraphNode("target", "target", target, {"scope": scope}))
-
-    # ── Internal helpers ──────────────────────────────────────────────
 
     def _add_node(self, node: GraphNode) -> str:
         if node.id not in self._node_ids:
@@ -69,10 +64,7 @@ class AttackTracker:
         self._finding_seq += 1
         return f"finding_{self._finding_seq}"
 
-    # ── Public API ────────────────────────────────────────────────────
-
     def record_reasoning(self, text: str, iteration: int) -> None:
-        """Record the agent's reasoning text for an iteration."""
         self._events.append(
             {
                 "type": "reasoning",
@@ -91,8 +83,6 @@ class AttackTracker:
         success: bool,
         iteration: int,
     ) -> None:
-        """Record a tool execution and extract discovered assets/findings."""
-        # Log every tool call to the event timeline
         self._events.append(
             {
                 "type": "tool_call",
@@ -106,7 +96,6 @@ class AttackTracker:
             }
         )
 
-        # Skip non-action tools from the graph
         if tool_name == "vuln_lookup":
             return
 
@@ -129,11 +118,9 @@ class AttackTracker:
             )
         )
 
-        # Edge: parent → this action
         parent = self._resolve_parent(tool_name, args)
         self._add_edge(parent, action_id, tool_name)
 
-        # Chain sequential actions
         if self._last_action_id and self._last_action_id != parent:
             self._add_edge(self._last_action_id, action_id, "then")
 
@@ -143,7 +130,6 @@ class AttackTracker:
             self._extract(action_id, tool_name, args, stdout)
 
     def is_duplicate_finding(self, url: str, title: str) -> bool:
-        """Check if a finding with the same normalized key already exists."""
         norm_url = re.sub(r"https?://", "", url).rstrip("/").lower()
         norm_title = re.sub(
             r"^(reflected|stored|blind|dom[- ]based)\s+",
@@ -168,7 +154,6 @@ class AttackTracker:
         remediation: str = "",
         iteration: int = 0,
     ) -> None:
-        """Record a confirmed vulnerability finding reported by the agent."""
         fid = self._make_finding_id()
         self._add_node(
             GraphNode(
@@ -188,11 +173,9 @@ class AttackTracker:
             )
         )
 
-        # Link to the last action that discovered it
         if self._last_action_id:
             self._add_edge(self._last_action_id, fid, severity)
 
-        # Link to the matching asset node if it exists
         if url:
             asset_id = self._make_asset_id(url)
             if asset_id in self._node_ids:
@@ -243,11 +226,7 @@ class AttackTracker:
         path.write_text(json.dumps(self.to_dict(), indent=2))
         return path
 
-    # ── Parent resolution ─────────────────────────────────────────────
-
     def _resolve_parent(self, tool_name: str, args: dict[str, Any]) -> str:
-        """Determine which node this tool call targets."""
-        # Try to match a specific asset the tool targets
         target_val = (
             args.get("target")
             or args.get("host")
@@ -259,8 +238,6 @@ class AttackTracker:
             if asset_id in self._node_ids:
                 return asset_id
         return "target"
-
-    # ── Output extraction ─────────────────────────────────────────────
 
     def _extract(self, action_id: str, tool_name: str, args: dict, stdout: str) -> None:
         extractors = {
@@ -342,7 +319,6 @@ class AttackTracker:
                 )
             )
             self._add_edge(action_id, fid, severity)
-            # Also link finding to the matched asset if it exists
             if matched:
                 asset_id = self._make_asset_id(matched)
                 if asset_id in self._node_ids:
@@ -435,7 +411,6 @@ class AttackTracker:
             self._add_edge(action_id, nid, "requested")
 
     def _extract_arjun(self, action_id: str, args: dict, stdout: str) -> None:
-        # Arjun JSON output: {"url": {"params": ["id", "name", ...]}}
         try:
             obj = json.loads(stdout)
         except json.JSONDecodeError:
@@ -457,7 +432,6 @@ class AttackTracker:
 
     def _extract_sqlmap(self, action_id: str, args: dict, stdout: str) -> None:
         lower = stdout.lower()
-        # SQLMap reports injectable parameters clearly
         if "is vulnerable" in lower or "injectable" in lower:
             url = args.get("url", "?")
             param = args.get("param", "")
@@ -482,7 +456,6 @@ class AttackTracker:
                     self._add_edge(asset_id, fid, "vulnerable")
 
     def _extract_dalfox(self, action_id: str, args: dict, stdout: str) -> None:
-        # Dalfox JSON output contains confirmed XSS findings
         for line in stdout.splitlines():
             try:
                 obj = json.loads(line)
@@ -515,10 +488,7 @@ class AttackTracker:
                     if asset_id in self._node_ids:
                         self._add_edge(asset_id, fid, "vulnerable")
 
-    # ── Query methods (used by dynamic context) ────────────────────────
-
     def get_tech_summary(self) -> dict[str, list[str]]:
-        """Extract detected technologies from httpx asset nodes."""
         tech_map: dict[str, list[str]] = {}
         for node in self._nodes:
             if node.type != "asset":
@@ -539,7 +509,6 @@ class AttackTracker:
         return tech_map
 
     def get_waf_info(self) -> list[str]:
-        """Get detected WAF names."""
         return [
             node.data.get("waf", "Unknown")
             for node in self._nodes
@@ -547,7 +516,6 @@ class AttackTracker:
         ]
 
     def get_discovered_endpoints(self) -> list[str]:
-        """Get list of discovered endpoint/host URLs."""
         return [
             node.label
             for node in self._nodes
@@ -555,7 +523,6 @@ class AttackTracker:
         ]
 
     def get_findings_summary(self) -> list[dict[str, str]]:
-        """Get a brief summary of all recorded findings."""
         return [
             {
                 "title": node.label,
@@ -567,7 +534,6 @@ class AttackTracker:
         ]
 
     def get_discovered_params(self) -> dict[str, list[str]]:
-        """Get discovered parameters by URL."""
         return {
             node.data["url"]: node.data.get("params", [])
             for node in self._nodes
@@ -577,12 +543,10 @@ class AttackTracker:
         }
 
     def node_count(self) -> int:
-        """Total number of nodes in the graph."""
         return len(self._nodes)
 
 
 def _sanitize_args(args: dict) -> dict:
-    """Remove overly large values from args for storage."""
     clean = {}
     for k, v in args.items():
         if isinstance(v, str) and len(v) > 500:
