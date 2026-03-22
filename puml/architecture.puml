@@ -1,0 +1,187 @@
+@startuml Mimick Architecture
+
+skinparam backgroundColor #1a1a2e
+skinparam defaultFontColor #e0e0e0
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam shadowing false
+skinparam roundCorner 12
+skinparam linetype ortho
+skinparam padding 6
+
+skinparam package {
+    BackgroundColor #16213e
+    BorderColor #0f3460
+    FontColor #e94560
+    FontSize 13
+    FontStyle bold
+    StereotypeFontColor #e94560
+}
+
+skinparam component {
+    BackgroundColor #0f3460
+    BorderColor #533483
+    FontColor #e0e0e0
+    FontSize 10
+}
+
+skinparam database {
+    BackgroundColor #1a1a40
+    BorderColor #e94560
+    FontColor #e0e0e0
+}
+
+skinparam cloud {
+    BackgroundColor #1a1a40
+    BorderColor #533483
+    FontColor #e0e0e0
+}
+
+skinparam rectangle {
+    BackgroundColor #16213e
+    BorderColor #0f3460
+    FontColor #e0e0e0
+}
+
+skinparam arrow {
+    Color #533483
+    FontColor #999999
+    FontSize 9
+}
+
+skinparam note {
+    BackgroundColor #1a1a40
+    BorderColor #533483
+    FontColor #e0e0e0
+}
+
+title <font size=18 color=#e94560><b>Mimick</b></font>\n<font size=12 color=#999999>AI-Powered Web Penetration Testing Agent</font>
+
+' ════════════════════════════════════════════
+' LAYERS
+' ════════════════════════════════════════════
+
+package "  CLI  " as cli_layer <<Interface>> {
+    component "main.py" as main <<Click>> #0f3460
+}
+
+package "  Agent Core  " as agent_layer <<Engine>> {
+    component "core.py\nAgent Loop" as core #1b4965
+    component "deps.py\nShared State" as deps #1b4965
+    component "strategy.py\nSignature Extraction" as strategy #1b4965
+}
+
+package "  Intelligence  " as intel_layer <<AI>> {
+    component "client.py\nModel Provider" as llm #2d1b69
+
+    package "Prompts" as prompt_layer {
+        component "system.py" as sys_prompt #2d1b69
+        component "templates.py" as templates #2d1b69
+    }
+}
+
+package "  Planner  " as planner_layer <<Strategy>> {
+    component "AttackPlanner\nTask Orchestrator" as planner #4a1942
+    component "AttackTree\nPriority Queue" as attack_tree #4a1942
+    component "SearchTree\nLATS / UCB1" as search_tree #4a1942
+    component "Catalog\nApproach Templates" as catalog #4a1942
+    component "Models\nPhase · Node · Approach" as models #4a1942
+}
+
+package "  Tools  " as tools_layer <<Execution>> {
+    component "ToolRegistry" as tool_base #0a4d3c
+    component "CLI Tools\nsubfinder · httpx · nuclei\nnmap · sqlmap · dalfox\nffuf · curl · katana" as cli_tools #0a4d3c
+    component "Python Exec\nCustom Scripts" as python_exec #0a4d3c
+    component "Browser\nPlaywright" as browser #0a4d3c
+    component "Vuln Lookup\nKnowledge Base" as vuln_lookup #0a4d3c
+}
+
+package "  Tracking & Output  " as output_layer <<Data>> {
+    component "AttackTracker\nDirected Graph" as tracker #6b3a0a
+    component "Reporter\nMarkdown Reports" as reporter #6b3a0a
+    component "Validator\nFinding Replay" as validator #6b3a0a
+}
+
+package "  Web Dashboard  " as web_layer <<UI>> {
+    component "FastAPI\napp.py" as webapp #0f3460
+    component "Static UI\nindex.html" as static #0f3460
+}
+
+package "  Benchmark  " as bench_layer <<Testing>> {
+    component "XBOW Runner\nDocker Orchestration" as benchmark #0f3460
+}
+
+' ════════════════════════════════════════════
+' EXTERNAL
+' ════════════════════════════════════════════
+
+cloud "  LLM Providers  " as providers {
+    component "OpenRouter" as or_prov #1a1a40
+    component "Anthropic" as an_prov #1a1a40
+    component "OpenAI" as oa_prov #1a1a40
+}
+
+database "  docs/  \n64 Vuln Categories" as docs
+database "  prompts/  \nsystem.md · plans" as prompt_files
+database "  results/  \nJSON · Reports · Scripts" as results
+
+rectangle "  External Security Tools  " as ext_tools #1a1a2e {
+    component "subfinder" as t1 #16213e
+    component "httpx" as t2 #16213e
+    component "nuclei" as t3 #16213e
+    component "nmap" as t4 #16213e
+    component "sqlmap" as t5 #16213e
+    component "dalfox" as t6 #16213e
+    component "ffuf" as t7 #16213e
+    component "curl" as t8 #16213e
+}
+
+' ════════════════════════════════════════════
+' CONNECTIONS
+' ════════════════════════════════════════════
+
+main -[#e94560]-> core : <font color=#e94560>scan</font>
+main -[#999999]-> benchmark : benchmark
+main -[#999999]-> webapp : web
+
+core -[#5b86e5]-> deps
+core -[#5b86e5]-> strategy
+core -[#5b86e5]-> llm
+core -[#5b86e5]-> sys_prompt
+core -[#e94560]-> tracker : record
+core -[#e94560]-> planner : perceive
+core -[#5b86e5]-> tool_base : execute
+core -[#5b86e5]-> validator : validate
+core -[#5b86e5]-> reporter : report
+
+deps -[#999999,dashed]-> tracker
+deps -[#999999,dashed]-> planner
+
+planner -[#c471ed]-> attack_tree
+planner -[#c471ed]-> search_tree
+planner -[#c471ed]-> models
+search_tree -[#c471ed]-> catalog
+catalog -[#c471ed]-> models
+
+tool_base -[#12d8fa]-> cli_tools
+tool_base -[#12d8fa]-> python_exec
+tool_base -[#12d8fa]-> browser
+tool_base -[#12d8fa]-> vuln_lookup
+
+vuln_lookup -[#999999,dashed]-> docs
+sys_prompt -[#999999,dashed]-> prompt_files
+templates -[#999999,dashed]-> prompt_files
+
+tracker -[#f5af19]-> results : save
+reporter -[#f5af19]-> results : save
+
+llm -[#533483,bold]-> providers
+
+cli_tools -[#12d8fa,dashed]..> ext_tools : subprocess
+
+webapp -[#999999,dashed]-> results : serve
+webapp -[#999999]-> static
+
+benchmark -[#999999]-> core : run_agent()
+
+@enduml

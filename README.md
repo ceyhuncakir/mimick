@@ -28,8 +28,10 @@ Mimick is an autonomous pentesting agent that chains 17 security tools with LLM 
 
 ## Features
 
-- **Autonomous multi-phase methodology** — recon, discovery, misconfiguration audit, vulnerability hunting
+- **Autonomous multi-phase methodology** — recon, discovery, misconfiguration audit, vulnerability hunting, exploitation, escalation
 - **17 integrated security tools** — nmap, sqlmap, nuclei, dalfox, ffuf, and more
+- **LATS search tree** — UCB1-driven approach exploration per task with backtracking and reflection from failures
+- **Attack planner** — phase-ordered priority queue with automatic task lifecycle, timeout management, and coverage tracking
 - **Parallel child agents** — spawns focused sub-agents for subdomains with shared discovery
 - **Auto-validation** — replays reproduction steps to independently confirm every finding
 - **Adaptive strategy** — dynamic prompt injection based on discovered tech stack, WAF, and failed attacks
@@ -190,58 +192,18 @@ Score: 32/45 (71%)
 
 > **Note:** A full XBOW benchmark run is still pending. However, since XBOW's CTF-style challenges don't fully reflect real-world application security, we are actively working on building our own benchmark suite that better represents production environments.
 
-## Architecture
+## Current Architecture
 
-```
-mimick scan example.com
-         │
-         ▼
-┌─────────────────────────────────────────────┐
-│              PydanticAI Agent               │
-│                                             │
-│  System Prompt (methodology + dynamic ctx)  │
-│         │                                   │
-│         ├─ Phase 1: Recon                   │
-│         ├─ Phase 2: Discovery               │
-│         ├─ Phase 3: Misconfiguration Audit  │
-│         └─ Phase 4: Vulnerability Hunting   │
-│                                             │
-│  ┌─────────────────────────────────────┐    │
-│  │         Tool Registry (17)          │    │
-│  │  subfinder │ httpx │ nuclei │ ...   │    │
-│  └─────────────────────────────────────┘    │
-│                                             │
-│  ┌─────────────────────────────────────┐    │
-│  │      Adaptive Strategy Layer        │    │
-│  │  • Tech stack detection             │    │
-│  │  • Failure memory                   │    │
-│  │  • Early termination                │    │
-│  └─────────────────────────────────────┘    │
-│                                             │
-│  ┌─────────────────────────────────────┐    │
-│  │      Child Agent Orchestration      │    │
-│  │  • Shared discovery bus             │    │
-│  │  • Focused task briefs              │    │
-│  │  • Finding deduplication            │    │
-│  └─────────────────────────────────────┘    │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────┐
-│          Attack Graph Tracker        │
-│  Records: tools → assets → findings  │
-└──────────────────┬───────────────────┘
-                   │
-          ┌────────┼────────┐
-          ▼        ▼        ▼
-     .json      .md      validation
-     graph    report      script
-```
+<div align="center">
+<img src="./puml/architecture.png" alt="Mimick Architecture" width="100%" />
+</div>
 
 ### Key Design Decisions
 
 - **PydanticAI agent loop** — structured tool calling with streaming iteration
-- **Dynamic prompt injection** — system prompt adapts each iteration based on discoveries, failures, and child agent findings
+- **LATS search tree** — UCB1-based approach exploration for vulnerability hunting with backtracking on failure
+- **Dynamic prompt injection** — system prompt adapts each iteration based on discoveries, failures, and planner state
+- **Attack planner** — phase-ordered priority queue (recon → discovery → misconfig → vuln hunt → exploit → escalate) with automatic task lifecycle management
 - **Finding deduplication** — normalized (URL, title) keys prevent duplicate reports across parent and child agents
 - **Last-step validation** — multi-step reproduction flows (register → login → exploit) only judge the final step
 - **Session propagation** — cookies from login steps automatically carry to exploit steps during validation
