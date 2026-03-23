@@ -221,6 +221,14 @@ Each scan produces:
 | `results/<run_id>.json` | Full attack graph — nodes, edges, events timeline |
 | `results/validation/<run_id>_validate.py` | Standalone script to re-verify all findings (stdlib only) |
 
+## Credits
+
+Mimick builds on ideas and resources from the community:
+
+- **[claude-bug-bounty](https://github.com/shuvonsec/claude-bug-bounty)** by shuvonsec — inspiration for the agent system prompt and hunting methodology
+- **[PayloadsAllTheThings](https://github.com/swisskyrepo/PayloadsAllTheThings)** by swissky — vulnerability documentation used in the built-in knowledge base
+- **[AgentRR: Get Experience from Practice](https://arxiv.org/abs/2505.17716)** by Feng et al. — record-and-replay framework for LLM agents that informed the experience memory architecture
+
 ## Contributing
 
 Contributions are welcome! Open an issue to report bugs or suggest features, or submit a pull request with your changes. I'll review all submissions personally. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
