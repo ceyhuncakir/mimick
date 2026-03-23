@@ -32,8 +32,9 @@ Mimick is an autonomous pentesting agent that chains 17 security tools with LLM 
 - **17 integrated security tools** — nmap, sqlmap, nuclei, dalfox, ffuf, and more
 - **LATS search tree** — UCB1-driven approach exploration per task with backtracking and reflection from failures
 - **Attack planner** — phase-ordered priority queue with automatic task lifecycle, timeout management, and coverage tracking
+- **Experience memory** — stores validated exploitation chains in ChromaDB; the agent queries past successes on similar targets via `recall_experience` when it spots something interesting
 - **Parallel child agents** — spawns focused sub-agents for subdomains with shared discovery
-- **Auto-validation** — replays reproduction steps to independently confirm every finding
+- **Auto-validation** — replays reproduction steps to independently confirm every finding; unconfirmed findings are automatically excluded from future experience recall
 - **Adaptive strategy** — dynamic prompt injection based on discovered tech stack, WAF, and failed attacks
 - **Attack graph tracking** — records every action as a directed graph for full audit trail
 - **XBOW benchmark support** — run against 104 CTF challenges with automated scoring
@@ -161,6 +162,7 @@ mimick benchmark /path/to/validation-benchmarks -f XBEN-001-24,XBEN-005-24
 | `curl` | Utility | Raw HTTP requests |
 | `python_exec` | Utility | Custom Python scripts for complex logic |
 | `vuln_lookup` | Knowledge | Vulnerability cheatsheets and payloads |
+| `recall_experience` | Knowledge | Query past validated exploitation chains on similar targets |
 | `report_finding` | Reporting | Register confirmed vulnerabilities |
 | `spawn_agent` | Orchestration | Parallel child agents for subdomains |
 
@@ -204,6 +206,7 @@ Score: 32/45 (71%)
 - **LATS search tree** — UCB1-based approach exploration for vulnerability hunting with backtracking on failure
 - **Dynamic prompt injection** — system prompt adapts each iteration based on discoveries, failures, and planner state
 - **Attack planner** — phase-ordered priority queue (recon → discovery → misconfig → vuln hunt → exploit → escalate) with automatic task lifecycle management
+- **Agent-driven experience recall** — the agent decides when to query past exploitation chains (e.g. after discovering a tech stack, before a new attack phase, or when stuck), producing richer semantic queries than a fixed schedule. Experiences are stored in ChromaDB with auto-linking (A-MEM style) and filtered to validated findings only
 - **Finding deduplication** — normalized (URL, title) keys prevent duplicate reports across parent and child agents
 - **Last-step validation** — multi-step reproduction flows (register → login → exploit) only judge the final step
 - **Session propagation** — cookies from login steps automatically carry to exploit steps during validation

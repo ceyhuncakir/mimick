@@ -20,5 +20,10 @@ class Settings(BaseSettings):
 
     output_dir: Path = Path("./results")
 
+    experience_db_dir: Path = Path.home() / ".mimick" / "experience_db"
+    experience_collection: str = "experiences"
+    experience_enabled: bool = True
+    experience_top_k: int = 2
+
 
 settings = Settings()

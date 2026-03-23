@@ -153,6 +153,7 @@ class AttackTracker:
         impact: str = "",
         remediation: str = "",
         iteration: int = 0,
+        vuln_type: str = "",
     ) -> None:
         fid = self._make_finding_id()
         self._add_node(
@@ -169,6 +170,7 @@ class AttackTracker:
                     "impact": impact,
                     "remediation": remediation,
                     "iteration": iteration,
+                    "vuln_type": vuln_type,
                 },
             )
         )

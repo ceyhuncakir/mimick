@@ -16,10 +16,12 @@ def build_system_prompt(
 ) -> str:
     """Build the full system prompt with injected runtime values."""
     template = _load("system.md")
+    reporting_rules = _load("reporting_rules.md")
     return (
         template.replace("{target}", target)
         .replace("{scope}", scope)
         .replace("{tool_descriptions}", tool_descriptions)
+        .replace("{reporting_rules}", reporting_rules)
     )
 
 

@@ -19,7 +19,7 @@ from mimick.benchmark.runner import (
 )
 from mimick.config import settings
 from mimick.logger import get_logger, setup_logging
-from mimick.output.reporter import save_report
+from mimick.output.reporter import save_report, save_report_pdf
 from mimick.tools import registry
 from mimick.web.app import create_app
 
@@ -58,6 +58,7 @@ def cli() -> None:
     type=int,
     help="Max parallel child agents when scanning subdomains (default: 5)",
 )
+@click.option("--pdf", is_flag=True, help="Also export the report as PDF")
 @click.option("--no-save", is_flag=True, help="Don't save report to file")
 @click.option(
     "--log-level",
@@ -73,6 +74,7 @@ def scan(
     max_iterations: int | None,
     output_dir: str | None,
     concurrency: int,
+    pdf: bool,
     no_save: bool,
     log_level: str | None,
 ) -> None:
@@ -137,6 +139,9 @@ def scan(
         path = save_report(target, report, run_id=_tracker.run_id)
         log.info("Report saved to %s", path)
         console.print(f"\n[bold]Report saved to:[/bold] {path}")
+        if pdf:
+            pdf_path = save_report_pdf(path)
+            console.print(f"[bold]PDF report saved to:[/bold] {pdf_path}")
         script_path = (
             settings.output_dir / "validation" / f"{_tracker.run_id}_validate.py"
         )
@@ -285,6 +290,80 @@ def web(port: int, host: str, output_dir: str | None) -> None:
         f"\n[bold]Mimick[/bold] dashboard running at [link]http://{host}:{port}[/link]\n"
     )
     uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
+@cli.command()
+@click.option("--clear", is_flag=True, help="Clear all stored experiences")
+def experience(clear: bool) -> None:
+    """View or manage the experience memory database.
+
+    Examples:
+
+        mimick experience
+
+        mimick experience --clear
+    """
+    from mimick.memory.store import ExperienceStore
+
+    store = ExperienceStore(settings.experience_db_dir)
+    count = store.count()
+
+    if clear:
+        if count == 0:
+            console.print("[dim]Experience database is already empty.[/dim]")
+            return
+        import shutil
+
+        shutil.rmtree(settings.experience_db_dir, ignore_errors=True)
+        console.print(f"[yellow]Cleared {count} experience(s).[/yellow]")
+        return
+
+    console.print(
+        f"\n[bold]Experience Memory[/bold] — {count} experience(s) "
+        f"stored at {settings.experience_db_dir}\n"
+    )
+
+    if count == 0:
+        console.print(
+            "[dim]No experiences yet. Run scans to build up the experience database.[/dim]"
+        )
+        return
+
+    # List all experiences
+    results = store._collection.get(
+        include=["metadatas"],
+        limit=50,
+    )
+    if results["ids"]:
+        for i, (exp_id, meta) in enumerate(
+            zip(results["ids"], results["metadatas"] or []), 1
+        ):
+            severity = meta.get("severity", "?").upper()
+            title = meta.get("finding_title", "?")
+            vuln_type = meta.get("vuln_type", "?")
+            tech = meta.get("tech_stack", "")
+            linked = (
+                len(meta.get("related_ids", "").split(","))
+                if meta.get("related_ids")
+                else 0
+            )
+
+            sev_color = {
+                "CRITICAL": "red",
+                "HIGH": "red",
+                "MEDIUM": "yellow",
+                "LOW": "blue",
+                "INFO": "dim",
+            }.get(severity, "white")
+
+            console.print(
+                f"  [{sev_color}]{severity:8s}[/] "
+                f"[bold]{title}[/bold] "
+                f"[dim]({vuln_type})[/dim]"
+                + (f" [dim]tech={tech}[/dim]" if tech else "")
+                + (f" [cyan]{linked} linked[/cyan]" if linked else "")
+            )
+    console.print()
 
 
 if __name__ == "__main__":

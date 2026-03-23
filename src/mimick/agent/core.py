@@ -14,6 +14,9 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from mimick.agent.deps import MimickDeps, UNPRODUCTIVE_THRESHOLD
+from mimick.memory.extractor import extract_experience
+from mimick.memory.linker import auto_link
+from mimick.memory.store import ExperienceStore
 from mimick.agent.strategy import (
     extract_from_command,
     extract_from_tool_call,
@@ -32,6 +35,23 @@ from mimick.validation.validator import validate_findings
 
 console = Console()
 log = get_logger("agent")
+
+_experience_store: ExperienceStore | None = None
+
+
+def _get_experience_store() -> ExperienceStore | None:
+    """Lazily initialize the global experience store."""
+    global _experience_store
+    if not settings.experience_enabled:
+        return None
+    if _experience_store is None:
+        try:
+            _experience_store = ExperienceStore(settings.experience_db_dir)
+        except Exception as e:
+            log.warning("Failed to initialize experience store: %s", e)
+            return None
+    return _experience_store
+
 
 _RECON_TOOLS = frozenset({"vuln_lookup", "wafw00f", "httpx", "subfinder"})
 
@@ -438,6 +458,41 @@ async def vuln_lookup(
 
 
 @mimick_agent.tool
+async def recall_experience(
+    ctx: RunContext[MimickDeps],
+    observation: str,
+    vuln_type: str | None = None,
+) -> str:
+    """Query past validated exploitation chains that match your current observation.
+
+    Call this when you discover something interesting that you want to
+    cross-reference against past successful attacks — e.g. a new tech stack,
+    unusual response behaviour, a parameter pattern, or before starting a new
+    attack phase.
+
+    Args:
+        observation: Describe what you're seeing right now — tech stack,
+            endpoint patterns, response anomalies, parameter names, WAF
+            behaviour, etc.  The richer the description, the better the match.
+        vuln_type: Optional vulnerability class filter (e.g. "sqli", "xss",
+            "idor", "ssti").  Omit to search across all classes.
+    """
+    store = _get_experience_store()
+    if not store or store.count() == 0:
+        return "No past experiences available yet."
+
+    experiences = store.query(
+        observation=observation,
+        top_k=settings.experience_top_k,
+        vuln_type=vuln_type,
+    )
+    if not experiences:
+        return "No matching past experiences found for this observation."
+
+    return store.format_experiences_for_prompt(experiences)
+
+
+@mimick_agent.tool
 async def report_finding(
     ctx: RunContext[MimickDeps],
     title: str,
@@ -448,6 +503,7 @@ async def report_finding(
     reproduction: list[dict[str, Any]] | None = None,
     impact: str = "",
     remediation: str = "",
+    vuln_type: str = "",
 ) -> str:
     """Report a confirmed vulnerability. Call immediately when you confirm a bug."""
     deps = ctx.deps
@@ -476,6 +532,7 @@ async def report_finding(
         impact=impact,
         remediation=remediation,
         iteration=deps.iteration,
+        vuln_type=vuln_type,
     )
     deps.tracker.save(settings.output_dir)
     deps.findings.append(
@@ -486,6 +543,29 @@ async def report_finding(
             "output_lines": 0,
         }
     )
+
+    # Capture experience for future retrieval (non-blocking)
+    store = _get_experience_store()
+    if store:
+
+        def _capture() -> None:
+            try:
+                experience = extract_experience(
+                    tracker=deps.tracker,
+                    finding_title=title,
+                    finding_severity=severity,
+                    finding_url=url,
+                    finding_description=description,
+                    finding_iteration=deps.iteration,
+                    vuln_type=vuln_type,
+                )
+                store.add(experience)
+                auto_link(store, experience)
+            except Exception as e:
+                log.debug("Experience capture failed: %s", e)
+
+        asyncio.get_event_loop().run_in_executor(None, _capture)
+
     return f"Finding recorded: [{severity.upper()}] {title} at {url}"
 
 
@@ -809,6 +889,12 @@ async def run_agent(
                     tracker, validation_results, settings.output_dir, run_id
                 )
                 log.info("Validation script saved to %s", script_path)
+
+                # Update experience store with validation results
+                store = _get_experience_store()
+                if store:
+                    _sync_validation_to_experiences(store, validation_results)
+
             tracker.save(settings.output_dir)
 
         console.print(
@@ -828,6 +914,31 @@ async def run_agent(
         tracker.finish("error")
         tracker.save(settings.output_dir)
         raise
+
+
+def _sync_validation_to_experiences(
+    store: ExperienceStore, validation_results: list[dict[str, str]]
+) -> None:
+    """Mark experiences as unvalidated if their findings failed validation."""
+    for result in validation_results:
+        if result["status"] == "UNCONFIRMED":
+            # Find matching experience by title and update validated=False
+            matches = store.query(
+                result.get("title", ""),
+                top_k=1,
+            )
+            for exp in matches:
+                if exp.finding_title.lower() == result.get("title", "").lower():
+                    exp.validated = False
+                    store._collection.update(
+                        ids=[exp.id],
+                        metadatas=[exp.metadata_dict()],
+                    )
+                    log.info(
+                        "Experience %s marked unvalidated: %s",
+                        exp.id,
+                        exp.finding_title,
+                    )
 
 
 def _format_validation_section(results: list[dict[str, str]]) -> str:

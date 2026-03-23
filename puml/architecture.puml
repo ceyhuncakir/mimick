@@ -96,6 +96,15 @@ package "  Tools  " as tools_layer <<Execution>> {
     component "Vuln Lookup\nKnowledge Base" as vuln_lookup #0a4d3c
 }
 
+package "  Experience Memory  " as memory_layer <<Memory>> {
+    component "ExperienceStore\nSemantic Retrieval" as exp_store #6b2f6b
+    component "Extractor\nChain Capture" as extractor #6b2f6b
+    component "Linker\nA-MEM Cross-Links" as linker #6b2f6b
+    component "Models\nExperience · ChainStep" as mem_models #6b2f6b
+}
+
+database "  ChromaDB  \nVector Embeddings" as chromadb
+
 package "  Tracking & Output  " as output_layer <<Data>> {
     component "AttackTracker\nDirected Graph" as tracker #6b3a0a
     component "Reporter\nMarkdown Reports" as reporter #6b3a0a
@@ -153,6 +162,7 @@ core -[#e94560]-> planner : perceive
 core -[#5b86e5]-> tool_base : execute
 core -[#5b86e5]-> validator : validate
 core -[#5b86e5]-> reporter : report
+core -[#c471ed]-> exp_store : recall_experience\n(agent-driven)
 
 deps -[#999999,dashed]-> tracker
 deps -[#999999,dashed]-> planner
@@ -174,6 +184,15 @@ templates -[#999999,dashed]-> prompt_files
 
 tracker -[#f5af19]-> results : save
 reporter -[#f5af19]-> results : save
+
+exp_store -[#c471ed]-> chromadb : query / upsert
+exp_store -[#c471ed]-> linker : auto_link
+exp_store -[#c471ed]-> mem_models
+extractor -[#c471ed]-> mem_models
+extractor -[#999999,dashed]-> tracker : read chain\n& observations
+linker -[#c471ed]-> exp_store : find_related
+core -[#f5af19]-> extractor : report_finding\n→ capture experience
+validator -[#f5af19,dashed]-> exp_store : sync validation\n(mark unconfirmed)
 
 llm -[#533483,bold]-> providers
 

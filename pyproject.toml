@@ -20,6 +20,9 @@ dependencies = [
     "itsdangerous>=2.0",
     "flask-unsign>=1.0",
     "pyjwt>=2.0",
+    "markdown>=3.5",
+    "weasyprint>=62.0",
+    "chromadb>=1.0.0",
 ]
 
 [project.optional-dependencies]
