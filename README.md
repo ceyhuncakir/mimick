@@ -233,6 +233,9 @@ Mimick builds on ideas and resources from the community:
 
 Contributions are welcome! Open an issue to report bugs or suggest features, or submit a pull request with your changes. I'll review all submissions personally. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
+## Disclaimer
+The authors assume no liability and are not responsible for any misuse or damage caused by this tool. By using Mimick, you agree to comply with all applicable local, state, national, and international laws.
+
 ## License
 
 MIT
