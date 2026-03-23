@@ -1,3 +1,5 @@
+"""Benchmark runner for evaluating Mimick against containerized challenges."""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +16,7 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
-from mimick.agent.core import run_agent
+from mimick.agent.runner import run_agent
 from mimick.config import settings
 from mimick.logger import get_logger
 
@@ -24,6 +26,8 @@ log = get_logger("benchmark")
 
 @dataclass
 class BenchmarkSpec:
+    """Specification for a single benchmark challenge loaded from disk."""
+
     id: str
     path: Path
     name: str
@@ -35,6 +39,14 @@ class BenchmarkSpec:
 
     @classmethod
     def load(cls, bench_dir: Path) -> BenchmarkSpec:
+        """Load a benchmark specification from its directory.
+
+        Args:
+            bench_dir: Path to the benchmark directory containing benchmark.json.
+
+        Returns:
+            Populated BenchmarkSpec instance.
+        """
         meta_path = bench_dir / "benchmark.json"
         meta = json.loads(meta_path.read_text())
         bench_id = bench_dir.name
@@ -53,6 +65,8 @@ class BenchmarkSpec:
 
 @dataclass
 class BenchmarkResult:
+    """Store the outcome of a single benchmark run."""
+
     bench_id: str
     name: str
     level: int
@@ -69,6 +83,7 @@ class BenchmarkResult:
 def _run_cmd(
     cmd: list[str], cwd: Path, timeout: int = 300
 ) -> subprocess.CompletedProcess:
+    """Run a subprocess command and return the completed process."""
     return subprocess.run(
         cmd,
         cwd=cwd,
@@ -79,6 +94,7 @@ def _run_cmd(
 
 
 def _docker_build(spec: BenchmarkSpec) -> bool:
+    """Build the Docker Compose stack for a benchmark."""
     log.info("Building %s", spec.id)
     r = _run_cmd(
         [
@@ -100,6 +116,7 @@ def _docker_build(spec: BenchmarkSpec) -> bool:
 
 
 def _docker_up(spec: BenchmarkSpec) -> bool:
+    """Start the Docker Compose stack for a benchmark."""
     log.info("Starting %s", spec.id)
     r = _run_cmd(
         ["docker", "compose", "up", "-d", "--wait"],
@@ -113,6 +130,7 @@ def _docker_up(spec: BenchmarkSpec) -> bool:
 
 
 def _docker_stop(spec: BenchmarkSpec) -> None:
+    """Stop and remove the Docker Compose stack for a benchmark."""
     log.info("Stopping %s", spec.id)
     _run_cmd(
         ["docker", "compose", "down", "-v", "--remove-orphans"],
@@ -122,6 +140,7 @@ def _docker_stop(spec: BenchmarkSpec) -> None:
 
 
 def _discover_target(spec: BenchmarkSpec) -> str | None:
+    """Discover the HTTP target URL from the benchmark's Docker Compose ports."""
     compose_path = spec.path / "docker-compose.yml"
     compose = yaml.safe_load(compose_path.read_text())
 
@@ -156,6 +175,7 @@ def _discover_target(spec: BenchmarkSpec) -> str | None:
 
 
 def _check_flag(flag: str, tracker: Any) -> bool:
+    """Check whether the expected flag appears in the tracker output."""
     data = tracker.to_dict()
 
     for event in data.get("events", []):
@@ -174,6 +194,7 @@ def _check_flag(flag: str, tracker: Any) -> bool:
 
 
 def _iter_values(obj: Any) -> list[str]:
+    """Recursively extract all string values from a nested structure."""
     strings: list[str] = []
     if isinstance(obj, str):
         strings.append(obj)
@@ -187,6 +208,7 @@ def _iter_values(obj: Any) -> list[str]:
 
 
 async def _run_one(spec: BenchmarkSpec, max_iterations: int) -> BenchmarkResult:
+    """Execute a single benchmark end-to-end and return the result."""
     result = BenchmarkResult(
         bench_id=spec.id,
         name=spec.name,
@@ -257,6 +279,7 @@ async def _run_one(spec: BenchmarkSpec, max_iterations: int) -> BenchmarkResult:
 
 
 def discover_benchmarks(benchmarks_dir: Path) -> list[BenchmarkSpec]:
+    """Scan a directory tree and load all valid benchmark specifications."""
     specs = []
     bench_root = benchmarks_dir / "benchmarks"
     if not bench_root.exists():
@@ -278,6 +301,7 @@ def filter_benchmarks(
     tags: list[str] | None = None,
     levels: list[int] | None = None,
 ) -> list[BenchmarkSpec]:
+    """Filter benchmark specs by ID, tag, or difficulty level."""
     filtered = specs
     if ids:
         id_set = {i.upper() for i in ids}
@@ -295,10 +319,21 @@ async def run_benchmarks(
     max_iterations: int = 30,
     concurrency: int = 1,
 ) -> list[BenchmarkResult]:
+    """Run all given benchmarks and collect results.
+
+    Args:
+        specs: Benchmark specifications to execute.
+        max_iterations: Maximum agent iterations per benchmark.
+        concurrency: Number of benchmarks to run in parallel.
+
+    Returns:
+        List of benchmark results in execution order.
+    """
     results: list[BenchmarkResult] = []
     sem = asyncio.Semaphore(concurrency)
 
     async def _guarded(spec: BenchmarkSpec) -> BenchmarkResult:
+        """Run a single benchmark guarded by the concurrency semaphore."""
         async with sem:
             console.rule(f"[bold]{spec.id}[/bold] — {spec.name}")
             r = await _run_one(spec, max_iterations)
@@ -317,6 +352,7 @@ async def run_benchmarks(
 
 
 def _print_result(r: BenchmarkResult) -> None:
+    """Print a single benchmark result line to the console."""
     icon = {"passed": "✅", "failed": "❌", "error": "💥", "skipped": "⏭️"}.get(
         r.status, "?"
     )
@@ -328,6 +364,7 @@ def _print_result(r: BenchmarkResult) -> None:
 
 
 def print_summary(results: list[BenchmarkResult]) -> None:
+    """Print a Rich table summarizing all benchmark results."""
     console.print()
     table = Table(title="XBOW Benchmark Results", show_lines=True)
     table.add_column("#", style="dim", width=4)
@@ -398,6 +435,7 @@ def print_summary(results: list[BenchmarkResult]) -> None:
 
 
 def save_results(results: list[BenchmarkResult], output_dir: Path) -> Path:
+    """Serialize benchmark results to a timestamped JSON file."""
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     path = output_dir / f"benchmark_{ts}.json"

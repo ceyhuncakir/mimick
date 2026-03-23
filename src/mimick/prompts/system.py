@@ -1,3 +1,5 @@
+"""System prompt construction from Markdown templates."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,6 +8,7 @@ _PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "prompts"
 
 
 def _load(name: str) -> str:
+    """Load a prompt template file by name from the prompts directory."""
     return (_PROMPTS_DIR / name).read_text(encoding="utf-8")
 
 

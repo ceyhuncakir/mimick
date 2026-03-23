@@ -1,3 +1,5 @@
+"""Low-level HTTP helpers for finding validation."""
+
 from __future__ import annotations
 
 import re
@@ -19,7 +21,10 @@ _PLACEHOLDER_RE = re.compile(r"REPLACE[_A-Z]*", re.IGNORECASE)
 
 
 class _NoRedirect(HTTPRedirectHandler):
+    """HTTP redirect handler that suppresses all redirects."""
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002
+        """Return None to prevent following any redirect."""
         return None
 
 
@@ -63,6 +68,7 @@ def http_request(
 
 
 def extract_cookies(resp_hdrs: dict[str, str]) -> dict[str, str]:
+    """Parse Set-Cookie headers and return a name-to-value mapping."""
     cookies: dict[str, str] = {}
     raw = resp_hdrs.get("set-cookie", "")
     if not raw:
@@ -76,10 +82,12 @@ def extract_cookies(resp_hdrs: dict[str, str]) -> dict[str, str]:
 
 
 def build_cookie_header(cookies: dict[str, str]) -> str:
+    """Format a cookie dict as a Cookie header value string."""
     return "; ".join(f"{k}={v}" for k, v in cookies.items())
 
 
 def inject_cookies(headers: dict[str, str], session_cookies: dict[str, str]) -> None:
+    """Merge session cookies into the request headers dict in place."""
     if not session_cookies:
         return
 

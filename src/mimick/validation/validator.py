@@ -1,3 +1,5 @@
+"""Validate security findings by replaying their reproduction steps."""
+
 from __future__ import annotations
 
 import asyncio

@@ -1,3 +1,5 @@
+"""Headless Chromium browser tool powered by Playwright."""
+
 from __future__ import annotations
 
 import json
@@ -8,15 +10,12 @@ from mimick.config import settings
 from mimick.logger import get_logger
 from mimick.tools.base import Tool, ToolResult, registry
 
-try:
-    from playwright.async_api import async_playwright
-
-    _HAS_PLAYWRIGHT = True
-except ImportError:
-    _HAS_PLAYWRIGHT = False
+from playwright.async_api import async_playwright
 
 
 class BrowserTool(Tool):
+    """Render pages in headless Chromium and extract information."""
+
     name = "browser"
     description = (
         "Render a page in a headless Chromium browser (Playwright). "
@@ -27,10 +26,18 @@ class BrowserTool(Tool):
     )
     binary = ""
 
-    def is_available(self) -> bool:
-        return _HAS_PLAYWRIGHT
-
     async def run(self, **kwargs: Any) -> ToolResult:
+        """Navigate to a URL and perform the requested browser action.
+
+        Args:
+            **kwargs: Must include ``url``.  Optional keys: ``action``
+                (``extract_info``, ``get_rendered_html``, ``execute_js``,
+                ``screenshot``), ``js_code``, ``wait_for``, ``cookie``,
+                ``timeout``.
+
+        Returns:
+            A ToolResult containing the action output or an error message.
+        """
         log = get_logger(f"tool.{self.name}")
 
         url: str = kwargs["url"]
@@ -39,15 +46,6 @@ class BrowserTool(Tool):
         wait_for: str | None = kwargs.get("wait_for")
         cookie_str: str | None = kwargs.get("cookie")
         timeout: int = kwargs.get("timeout", 15000)
-
-        if not _HAS_PLAYWRIGHT:
-            return ToolResult(
-                tool_name=self.name,
-                command=f"browser {action} {url}",
-                stdout="",
-                stderr="Playwright is not installed. Install with: pip install playwright && playwright install chromium",
-                return_code=1,
-            )
 
         log.debug("Browser %s: %s", action, url)
 
@@ -131,6 +129,7 @@ class BrowserTool(Tool):
             )
 
     def _parse_cookies(self, cookie_str: str, url: str) -> list[dict]:
+        """Parse a semicolon-delimited cookie string into Playwright dicts."""
         parsed = urlparse(url)
         domain = parsed.hostname or ""
         cookies = []
@@ -149,6 +148,7 @@ class BrowserTool(Tool):
         return cookies
 
     async def _get_rendered_html(self, page: Any) -> str:
+        """Return the fully rendered DOM HTML, truncated if necessary."""
         html = await page.content()
         if len(html) > 50000:
             html = (
@@ -157,6 +157,7 @@ class BrowserTool(Tool):
         return html
 
     async def _execute_js(self, page: Any, js_code: str | None) -> str:
+        """Evaluate custom JavaScript in the page context and return the result."""
         if not js_code:
             return "Error: js_code parameter is required for action='execute_js'"
         try:
@@ -166,6 +167,7 @@ class BrowserTool(Tool):
             return f"JavaScript execution error: {e}"
 
     async def _screenshot(self, page: Any, url: str) -> str:
+        """Capture a full-page screenshot and save it to the output directory."""
         screenshots_dir = settings.output_dir / "screenshots"
         screenshots_dir.mkdir(parents=True, exist_ok=True)
 
@@ -176,6 +178,7 @@ class BrowserTool(Tool):
         return f"Screenshot saved to {path}"
 
     async def _extract_info(self, page: Any, console_messages: list[str]) -> str:
+        """Extract links, forms, scripts, cookies, and JS libraries from the page."""
         info = await page.evaluate("""() => {
             const result = {};
 

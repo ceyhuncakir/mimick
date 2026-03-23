@@ -1,7 +1,10 @@
+"""Register external CLI binaries as simple Tool instances."""
+
 from mimick.tools.base import Tool, registry
 
 
 def _register(name: str, binary: str, description: str) -> None:
+    """Create a generic Tool for *binary* and add it to the global registry."""
     tool = Tool()
     tool.name = name
     tool.binary = binary

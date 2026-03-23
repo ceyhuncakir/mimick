@@ -1,3 +1,5 @@
+"""Logging setup with Rich console output and optional file logging."""
+
 import logging
 from pathlib import Path
 

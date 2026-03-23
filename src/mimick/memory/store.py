@@ -1,6 +1,9 @@
+"""Persistent experience store backed by ChromaDB."""
+
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import chromadb
 
@@ -12,22 +15,27 @@ log = get_logger("experience")
 
 
 class ExperienceStore:
-    """Persistent experience memory backed by ChromaDB.
+    """Persistent experience memory with semantic search over observation contexts.
 
-    Stores validated exploitation chains with semantic search over
-    observation contexts. Uses ChromaDB's built-in all-MiniLM-L6-v2
-    embeddings (local, no API key needed).
+    Uses ChromaDB's built-in all-MiniLM-L6-v2 embeddings for local
+    similarity search without an external API.
 
-    Architecture references:
-      - AgentRR: multi-level experience abstraction
-      - Memex(RL): indexed memory with full-fidelity chain data
-      - A-MEM: dynamic linking between related experiences
+    Attributes:
+        _client: ChromaDB persistent client instance.
+        _collection: ChromaDB collection holding experience documents.
     """
 
     def __init__(self, db_dir: Path) -> None:
+        """Initialize the store, creating the database directory if needed.
+
+        Args:
+            db_dir: Filesystem path for the ChromaDB persistent storage.
+        """
         db_dir.mkdir(parents=True, exist_ok=True)
-        self._client = chromadb.PersistentClient(path=str(db_dir))
-        self._collection = self._client.get_or_create_collection(
+        self._client: chromadb.PersistentClient = chromadb.PersistentClient(
+            path=str(db_dir)
+        )
+        self._collection: chromadb.Collection = self._client.get_or_create_collection(
             name=settings.experience_collection,
             metadata={"hnsw:space": "cosine"},
         )
@@ -38,7 +46,11 @@ class ExperienceStore:
         )
 
     def add(self, experience: Experience) -> None:
-        """Store a new experience."""
+        """Store a new experience, upserting by ID.
+
+        Args:
+            experience: The experience to persist.
+        """
         self._collection.upsert(
             ids=[experience.id],
             documents=[experience.searchable_document()],
@@ -60,23 +72,35 @@ class ExperienceStore:
     ) -> list[Experience]:
         """Retrieve similar past experiences by observation context.
 
-        Based on RAG Agents paper findings:
-          - Query by current observation state (not task goal)
-          - top-2 outperforms top-5 (less noise)
-          - Filter by vuln_type when in a specific attack phase
+        Args:
+            observation: Current observation text to match against.
+            top_k: Maximum number of results to return.
+            vuln_type: Optional filter to restrict results to a specific
+                vulnerability type.
+            min_severity: Optional minimum severity threshold. Results at
+                or above this level are returned.
+
+        Returns:
+            List of matching experiences ordered by similarity.
         """
         if self._collection.count() == 0:
             return []
 
-        where: dict | None = None
-        conditions: list[dict] = [{"validated": True}]
+        where: dict[str, Any] | None = None
+        conditions: list[dict[str, Any]] = [{"validated": True}]
 
         if vuln_type:
             conditions.append({"vuln_type": vuln_type})
 
         if min_severity:
-            severity_order = ["info", "low", "medium", "high", "critical"]
-            idx = (
+            severity_order: list[str] = [
+                "info",
+                "low",
+                "medium",
+                "high",
+                "critical",
+            ]
+            idx: int = (
                 severity_order.index(min_severity)
                 if min_severity in severity_order
                 else 0
@@ -90,14 +114,13 @@ class ExperienceStore:
             where = {"$and": conditions}
 
         try:
-            results = self._collection.query(
+            results: dict[str, Any] = self._collection.query(
                 query_texts=[observation],
                 n_results=min(top_k, self._collection.count()),
                 where=where,
                 include=["documents", "metadatas", "distances"],
             )
         except Exception:
-            # Fall back to unfiltered query if filter fails
             results = self._collection.query(
                 query_texts=[observation],
                 n_results=min(top_k, self._collection.count()),
@@ -109,22 +132,32 @@ class ExperienceStore:
             return experiences
 
         for i, exp_id in enumerate(results["ids"][0]):
-            doc = results["documents"][0][i] if results["documents"] else ""
-            meta = results["metadatas"][0][i] if results["metadatas"] else {}
-            distance = results["distances"][0][i] if results["distances"] else 1.0
+            doc: str = results["documents"][0][i] if results["documents"] else ""
+            meta: dict[str, Any] = (
+                results["metadatas"][0][i] if results["metadatas"] else {}
+            )
+            distance: float = (
+                results["distances"][0][i] if results["distances"] else 1.0
+            )
 
-            # Cosine distance threshold — skip if too dissimilar
             if distance > 0.7:
                 continue
 
-            exp = Experience.from_chroma_result(exp_id, doc, meta)
+            exp: Experience = Experience.from_chroma_result(exp_id, doc, meta)
             experiences.append(exp)
 
         return experiences
 
     def get(self, experience_id: str) -> Experience | None:
-        """Get a specific experience by ID."""
-        result = self._collection.get(
+        """Fetch a specific experience by its ID.
+
+        Args:
+            experience_id: Unique identifier of the experience.
+
+        Returns:
+            The matching experience, or ``None`` if not found.
+        """
+        result: dict[str, Any] = self._collection.get(
             ids=[experience_id],
             include=["documents", "metadatas"],
         )
@@ -137,9 +170,14 @@ class ExperienceStore:
         )
 
     def link(self, exp_id_a: str, exp_id_b: str) -> None:
-        """Create a bidirectional link between two experiences."""
-        a = self.get(exp_id_a)
-        b = self.get(exp_id_b)
+        """Create a bidirectional link between two experiences.
+
+        Args:
+            exp_id_a: ID of the first experience.
+            exp_id_b: ID of the second experience.
+        """
+        a: Experience | None = self.get(exp_id_a)
+        b: Experience | None = self.get(exp_id_b)
         if not a or not b:
             return
 
@@ -160,12 +198,19 @@ class ExperienceStore:
         log.debug("Linked experiences: %s <-> %s", exp_id_a, exp_id_b)
 
     def find_related(self, experience: Experience, top_k: int = 3) -> list[Experience]:
-        """Find experiences related to a given one (for auto-linking).
+        """Find experiences related to the given one for auto-linking.
 
-        Queries by the same observation to find similar chains,
-        then filters out the experience itself.
+        Queries by the same observation to find similar chains, then
+        filters out the experience itself.
+
+        Args:
+            experience: The reference experience to find relatives for.
+            top_k: Maximum number of related experiences to return.
+
+        Returns:
+            List of related experiences, excluding the input experience.
         """
-        candidates = self.query(
+        candidates: list[Experience] = self.query(
             experience.observation,
             top_k=top_k + 1,
             vuln_type=experience.vuln_type,
@@ -173,26 +218,41 @@ class ExperienceStore:
         return [c for c in candidates if c.id != experience.id][:top_k]
 
     def get_linked(self, experience: Experience) -> list[Experience]:
-        """Retrieve all linked experiences for cross-over discovery."""
+        """Retrieve all directly linked experiences.
+
+        Args:
+            experience: The experience whose links to follow.
+
+        Returns:
+            List of linked experiences for cross-over discovery.
+        """
         linked: list[Experience] = []
         for rid in experience.related_ids:
-            exp = self.get(rid)
+            exp: Experience | None = self.get(rid)
             if exp:
                 linked.append(exp)
         return linked
 
     def count(self) -> int:
+        """Return the total number of stored experiences."""
         return self._collection.count()
 
     def format_experiences_for_prompt(self, experiences: list[Experience]) -> str:
         """Format retrieved experiences as a prompt section.
 
         Includes linked experiences for cross-over chain discovery.
+
+        Args:
+            experiences: Experiences to render.
+
+        Returns:
+            Markdown-formatted prompt text, or empty string if no
+            experiences are provided.
         """
         if not experiences:
             return ""
 
-        lines = [
+        lines: list[str] = [
             "# Past Experience (validated findings on similar targets)",
             "",
             "These chains confirmed real vulnerabilities on targets with a similar "
@@ -205,18 +265,19 @@ class ExperienceStore:
         for exp in experiences:
             lines.append(exp.format_for_prompt())
 
-            # Surface cross-over links
-            linked = self.get_linked(exp)
+            linked: list[Experience] = self.get_linked(exp)
             if linked:
                 lines.append("")
                 lines.append(
                     "**Cross-over chains (similar vuln class, different setup):**"
                 )
-                for link in linked[:2]:
-                    chain_brief = " → ".join(step.tool for step in link.chain[:5])
+                for link_exp in linked[:2]:
+                    chain_brief: str = " → ".join(
+                        step.tool for step in link_exp.chain[:5]
+                    )
                     lines.append(
-                        f"- [{link.severity.upper()}] {link.finding_title} "
-                        f"({', '.join(link.tech_stack[:3])}) — {chain_brief}"
+                        f"- [{link_exp.severity.upper()}] {link_exp.finding_title} "
+                        f"({', '.join(link_exp.tech_stack[:3])}) — {chain_brief}"
                     )
             lines.append("")
 

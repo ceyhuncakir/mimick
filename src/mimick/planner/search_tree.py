@@ -1,3 +1,5 @@
+"""Search tree for UCB1-guided approach exploration on attack-tree tasks."""
+
 from __future__ import annotations
 
 import math
@@ -17,6 +19,15 @@ class SearchTree:
         tech_hints: set[str] | None = None,
         waf_detected: bool = False,
     ) -> None:
+        """Initialize the search tree and generate approaches from the catalog.
+
+        Args:
+            node_id: Identifier of the parent attack-tree node.
+            category: Attack category used to look up approach templates.
+            target_url: URL this search tree targets.
+            tech_hints: Detected technologies for tailoring payloads.
+            waf_detected: Whether a WAF has been detected on the target.
+        """
         self.node_id = node_id
         self.category = category
         self.target_url = target_url
@@ -26,6 +37,15 @@ class SearchTree:
         self._active_id: str | None = None
 
     def _generate(self, tech_hints: set[str], waf_detected: bool) -> list[Approach]:
+        """Generate concrete approaches from catalog templates.
+
+        Args:
+            tech_hints: Detected technologies for variant selection.
+            waf_detected: Whether to append WAF evasion hints.
+
+        Returns:
+            List of instantiated Approach objects.
+        """
         templates = APPROACH_CATALOG.get(self.category, FALLBACK_APPROACHES)
         approaches = [t.instantiate(tech_hints) for t in templates]
         if waf_detected:
@@ -34,6 +54,11 @@ class SearchTree:
         return approaches
 
     def select(self) -> Approach | None:
+        """Select the next untried approach using UCB1 and mark it active.
+
+        Returns:
+            The selected Approach, or None if all approaches have been tried.
+        """
         candidates = [a for a in self._approaches if a.status == ApproachStatus.UNTRIED]
         if not candidates:
             return None
@@ -55,6 +80,13 @@ class SearchTree:
     def record_result(
         self, approach_id: str, *, succeeded: bool, reflection: str = ""
     ) -> None:
+        """Record the outcome of an approach attempt.
+
+        Args:
+            approach_id: Identifier of the approach to update.
+            succeeded: Whether the approach succeeded.
+            reflection: Optional reflection on the outcome (truncated to 300 chars).
+        """
         approach = self._find(approach_id)
         if not approach:
             return
@@ -70,15 +102,23 @@ class SearchTree:
             self._active_id = None
 
     def get_active(self) -> Approach | None:
+        """Return the currently active approach, or None."""
         return self._find(self._active_id) if self._active_id else None
 
     def all_exhausted(self) -> bool:
+        """Return whether every approach has reached a terminal status."""
         return all(a.is_terminal for a in self._approaches)
 
     def remaining_count(self) -> int:
+        """Return the number of approaches that have not yet reached a terminal status."""
         return sum(1 for a in self._approaches if not a.is_terminal)
 
     def build_context(self) -> str:
+        """Build a markdown context block describing the current approach strategy.
+
+        Returns:
+            Formatted markdown string, or empty string if no approaches remain.
+        """
         active = self.get_active() or self.select()
         if not active:
             return ""
@@ -117,6 +157,14 @@ class SearchTree:
         return "\n".join(lines)
 
     def _find(self, approach_id: str | None) -> Approach | None:
+        """Look up an approach by ID.
+
+        Args:
+            approach_id: The approach identifier, or None.
+
+        Returns:
+            The matching Approach, or None if not found.
+        """
         if not approach_id:
             return None
         return next((a for a in self._approaches if a.id == approach_id), None)

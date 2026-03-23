@@ -1,3 +1,5 @@
+"""Automatic bidirectional linking between related experiences."""
+
 from __future__ import annotations
 
 from mimick.logger import get_logger
@@ -8,17 +10,18 @@ log = get_logger("experience.linker")
 
 
 def auto_link(store: ExperienceStore, experience: Experience) -> None:
-    """Automatically link a new experience to similar existing ones.
+    """Link a new experience to similar existing ones.
 
-    Inspired by A-MEM's Zettelkasten-style dynamic linking:
-    finds experiences with similar observations or the same vuln_type
-    and creates bidirectional links for cross-over chain discovery.
+    Finds experiences with similar observations or the same vulnerability
+    type and creates bidirectional links for cross-over chain discovery.
+
+    Args:
+        store: The experience store to search and update.
+        experience: The newly created experience to link.
     """
-    related = store.find_related(experience, top_k=3)
+    related: list[Experience] = store.find_related(experience, top_k=3)
 
     for candidate in related:
-        # Link if same vuln type or if observation similarity is high
-        # (find_related already filters by similarity via ChromaDB query)
         store.link(experience.id, candidate.id)
         log.info(
             "Auto-linked %s (%s) <-> %s (%s)",

@@ -1,6 +1,9 @@
+"""Extract experience records from attack tracker state."""
+
 from __future__ import annotations
 
 import re
+from typing import Any
 from urllib.parse import urlparse
 
 from mimick.memory.models import ChainStep, Experience
@@ -8,11 +11,18 @@ from mimick.tracker import AttackTracker
 
 
 def _detect_target_type(tracker: AttackTracker) -> str:
-    """Infer target type from discovered assets."""
-    endpoints = tracker.get_discovered_endpoints()
-    tech = tracker.get_tech_summary()
+    """Infer the target type from discovered assets.
 
-    all_tech = " ".join(" ".join(v) for v in tech.values()).lower()
+    Args:
+        tracker: Attack tracker with accumulated discovery data.
+
+    Returns:
+        One of ``"spa"``, ``"web_api"``, or ``"web_app"``.
+    """
+    endpoints: list[str] = tracker.get_discovered_endpoints()
+    tech: dict[str, list[str]] = tracker.get_tech_summary()
+
+    all_tech: str = " ".join(" ".join(v) for v in tech.values()).lower()
 
     if any(kw in all_tech for kw in ("react", "vue", "angular", "next")):
         return "spa"
@@ -22,13 +32,20 @@ def _detect_target_type(tracker: AttackTracker) -> str:
 
 
 def _extract_tech_stack(tracker: AttackTracker) -> list[str]:
-    """Extract a flat list of technologies from the tracker."""
-    tech_map = tracker.get_tech_summary()
+    """Extract a deduplicated flat list of technologies from the tracker.
+
+    Args:
+        tracker: Attack tracker with accumulated discovery data.
+
+    Returns:
+        Up to 10 normalized technology names.
+    """
+    tech_map: dict[str, list[str]] = tracker.get_tech_summary()
     seen: set[str] = set()
     result: list[str] = []
     for techs in tech_map.values():
         for t in techs:
-            clean = t.replace("Server: ", "").strip().lower()
+            clean: str = t.replace("Server: ", "").strip().lower()
             if clean and clean not in seen:
                 seen.add(clean)
                 result.append(clean)
@@ -43,35 +60,47 @@ def _build_observation(
 ) -> str:
     """Build the observation signature from tracker state at finding time.
 
-    Captures what the agent saw leading up to the finding:
-    tech stack, endpoints, WAF, and relevant tool outputs.
+    Captures what the agent saw leading up to the finding: tech stack,
+    endpoints, WAF info, parameters, and reasoning snippets.
+
+    Args:
+        tracker: Attack tracker with accumulated discovery data.
+        finding_title: Title of the finding.
+        finding_url: URL where the vulnerability was found.
+        finding_iteration: Iteration number when the finding occurred.
+
+    Returns:
+        Multi-line observation string, or a fallback if no data is
+        available.
     """
     parts: list[str] = []
 
-    tech = tracker.get_tech_summary()
+    tech: dict[str, list[str]] = tracker.get_tech_summary()
     if tech:
-        tech_lines = [f"{host}: {', '.join(ts)}" for host, ts in list(tech.items())[:5]]
+        tech_lines: list[str] = [
+            f"{host}: {', '.join(ts)}" for host, ts in list(tech.items())[:5]
+        ]
         parts.append(f"Tech stack: {'; '.join(tech_lines)}")
 
-    wafs = tracker.get_waf_info()
+    wafs: list[str] = tracker.get_waf_info()
     if wafs:
         parts.append(f"WAF: {', '.join(wafs)}")
 
-    endpoints = tracker.get_discovered_endpoints()
+    endpoints: list[str] = tracker.get_discovered_endpoints()
     if endpoints:
-        relevant = [ep for ep in endpoints if _url_overlap(ep, finding_url)]
+        relevant: list[str] = [ep for ep in endpoints if _url_overlap(ep, finding_url)]
         if not relevant:
             relevant = endpoints[:5]
         parts.append(f"Endpoints: {', '.join(relevant[:5])}")
 
-    params = tracker.get_discovered_params()
+    params: dict[str, list[str]] = tracker.get_discovered_params()
     if params:
-        param_strs = [
+        param_strs: list[str] = [
             f"{url}: {', '.join(ps[:5])}" for url, ps in list(params.items())[:3]
         ]
         parts.append(f"Params: {'; '.join(param_strs)}")
 
-    reasoning_context = _extract_reasoning_before(tracker, finding_iteration)
+    reasoning_context: str = _extract_reasoning_before(tracker, finding_iteration)
     if reasoning_context:
         parts.append(f"Agent observations: {reasoning_context}")
 
@@ -79,36 +108,56 @@ def _build_observation(
 
 
 def _url_overlap(ep: str, finding_url: str) -> bool:
-    """Check if two URLs share a path prefix."""
+    """Check whether two URLs share at least two path segments.
+
+    Args:
+        ep: An endpoint URL.
+        finding_url: The finding URL to compare against.
+
+    Returns:
+        ``True`` if the URLs share a common path prefix of at least two
+        segments.
+    """
     try:
-        ep_path = urlparse(ep).path.rstrip("/")
-        finding_path = urlparse(finding_url).path.rstrip("/")
+        ep_path: str = urlparse(ep).path.rstrip("/")
+        finding_path: str = urlparse(finding_url).path.rstrip("/")
         if not ep_path or not finding_path:
             return False
-        ep_parts = ep_path.split("/")
-        find_parts = finding_path.split("/")
-        common = sum(1 for a, b in zip(ep_parts, find_parts) if a == b)
+        ep_parts: list[str] = ep_path.split("/")
+        find_parts: list[str] = finding_path.split("/")
+        common: int = sum(1 for a, b in zip(ep_parts, find_parts) if a == b)
         return common >= 2
     except Exception:
         return False
 
 
 def _extract_reasoning_before(
-    tracker: AttackTracker, finding_iteration: int, max_chars: int = 300
+    tracker: AttackTracker,
+    finding_iteration: int,
+    max_chars: int = 300,
 ) -> str:
-    """Extract key reasoning snippets from events before the finding."""
+    """Extract key reasoning snippets from events before the finding.
+
+    Args:
+        tracker: Attack tracker containing event history.
+        finding_iteration: Iteration number of the finding.
+        max_chars: Maximum character length for the returned string.
+
+    Returns:
+        Pipe-separated reasoning excerpts, truncated to *max_chars*.
+    """
     reasoning_parts: list[str] = []
     for event in tracker._events:
         if event.get("iteration", 0) > finding_iteration:
             break
         if event.get("type") == "reasoning":
-            text = event.get("text", "")
-            first_line = text.split("\n")[0].strip()
+            text: str = event.get("text", "")
+            first_line: str = text.split("\n")[0].strip()
             if first_line and len(first_line) > 20:
                 reasoning_parts.append(first_line[:100])
 
-    recent = reasoning_parts[-3:]
-    result = " | ".join(recent)
+    recent: list[str] = reasoning_parts[-3:]
+    result: str = " | ".join(recent)
     return result[:max_chars]
 
 
@@ -118,11 +167,17 @@ def _build_chain(
 ) -> list[ChainStep]:
     """Extract the tool-call chain leading to a finding.
 
-    Only includes events AFTER the previous finding to avoid
+    Only includes events after the previous finding to avoid
     contaminating the chain with a different exploit's steps.
+
+    Args:
+        tracker: Attack tracker containing event history.
+        finding_iteration: Iteration number of the current finding.
+
+    Returns:
+        Ordered list of up to 15 chain steps.
     """
-    # Find the iteration of the most recent prior finding
-    prev_finding_iter = 0
+    prev_finding_iter: int = 0
     for event in tracker._events:
         if (
             event.get("type") == "finding"
@@ -130,29 +185,28 @@ def _build_chain(
         ):
             prev_finding_iter = event["iteration"]
 
-    tool_events = [
+    tool_events: list[dict[str, Any]] = [
         e
         for e in tracker._events
         if e.get("type") == "tool_call"
         and prev_finding_iter < e.get("iteration", 0) <= finding_iteration
     ]
 
-    # Cap at 15 most recent steps within this finding's window
-    relevant = tool_events[-15:]
+    relevant: list[dict[str, Any]] = tool_events[-15:]
 
     chain: list[ChainStep] = []
     for event in relevant:
-        tool = event.get("tool", "")
-        args = event.get("args", {})
+        tool: str = event.get("tool", "")
+        args: dict[str, Any] | str = event.get("args", {})
 
         if isinstance(args, dict):
-            arg_parts = [f"{k}={v}" for k, v in args.items() if v]
-            args_str = ", ".join(arg_parts)
+            arg_parts: list[str] = [f"{k}={v}" for k, v in args.items() if v]
+            args_str: str = ", ".join(arg_parts)
         else:
             args_str = str(args)
 
-        stdout = event.get("stdout", "")
-        result_summary = _summarize_output(tool, stdout)
+        stdout: str = event.get("stdout", "")
+        result_summary: str = _summarize_output(tool, stdout)
 
         chain.append(
             ChainStep(
@@ -166,23 +220,32 @@ def _build_chain(
 
 
 def _summarize_output(tool: str, stdout: str, max_len: int = 150) -> str:
-    """Create a compact summary of a tool's output."""
+    """Create a compact summary of a tool's output.
+
+    Args:
+        tool: Name of the tool that produced the output.
+        stdout: Raw standard output from the tool.
+        max_len: Maximum length for the first-line fallback summary.
+
+    Returns:
+        A short human-readable summary string.
+    """
     if not stdout:
         return "(no output)"
 
-    lines = stdout.strip().splitlines()
-    line_count = len(lines)
+    lines: list[str] = stdout.strip().splitlines()
+    line_count: int = len(lines)
 
     if tool in ("httpx", "nuclei", "ffuf", "dalfox"):
         return f"{line_count} results"
     if tool == "subfinder":
         return f"{line_count} subdomains"
     if tool == "nmap":
-        ports = re.findall(r"(\d+/\w+)\s+open", stdout)
+        ports: list[str] = re.findall(r"(\d+/\w+)\s+open", stdout)
         if ports:
             return f"Open ports: {', '.join(ports[:5])}"
 
-    first = lines[0].strip()[:max_len]
+    first: str = lines[0].strip()[:max_len]
     if line_count > 1:
         return f"{first} (+{line_count - 1} lines)"
     return first
@@ -193,12 +256,21 @@ def _build_strategy(
     description: str,
     chain: list[ChainStep],
 ) -> str:
-    """Build a concise strategy string from the finding and chain."""
-    tool_flow = " → ".join(step.tool for step in chain[-6:])
+    """Build a concise strategy string from the finding and chain.
 
-    parts = [f"{title}."]
+    Args:
+        title: Finding title.
+        description: Finding description text.
+        chain: Tool-call chain associated with the finding.
+
+    Returns:
+        Strategy string truncated to 500 characters.
+    """
+    tool_flow: str = " → ".join(step.tool for step in chain[-6:])
+
+    parts: list[str] = [f"{title}."]
     if description:
-        first_sentence = description.split(".")[0].strip()
+        first_sentence: str = description.split(".")[0].strip()
         if first_sentence and len(first_sentence) > 10:
             parts.append(f"{first_sentence}.")
     if tool_flow:
@@ -218,18 +290,26 @@ def extract_experience(
 ) -> Experience:
     """Extract a full Experience from the tracker after a finding is confirmed.
 
-    The vuln_type is provided by the agent — it knows what class of
-    vulnerability it found. This allows the experience DB to grow
-    organically with any vulnerability type, not just pre-defined ones.
+    Args:
+        tracker: Attack tracker with accumulated state.
+        finding_title: Short title of the vulnerability.
+        finding_severity: Severity level string.
+        finding_url: URL where the vulnerability was found.
+        finding_description: Detailed description of the finding.
+        finding_iteration: Iteration number when the finding occurred.
+        vuln_type: Vulnerability category provided by the agent.
+
+    Returns:
+        A fully populated Experience instance ready for storage.
     """
-    tech_stack = _extract_tech_stack(tracker)
-    target_type = _detect_target_type(tracker)
-    observation = _build_observation(
+    tech_stack: list[str] = _extract_tech_stack(tracker)
+    target_type: str = _detect_target_type(tracker)
+    observation: str = _build_observation(
         tracker, finding_title, finding_url, finding_iteration
     )
-    chain = _build_chain(tracker, finding_iteration)
+    chain: list[ChainStep] = _build_chain(tracker, finding_iteration)
 
-    strategy = _build_strategy(finding_title, finding_description, chain)
+    strategy: str = _build_strategy(finding_title, finding_description, chain)
 
     return Experience(
         strategy=strategy,

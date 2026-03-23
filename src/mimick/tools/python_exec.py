@@ -1,3 +1,5 @@
+"""Tool for writing and executing arbitrary Python scripts."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,6 +14,8 @@ from mimick.tools.base import Tool, ToolResult, registry
 
 
 class PythonExecTool(Tool):
+    """Execute arbitrary Python scripts in a temporary workspace."""
+
     name = "python_exec"
     description = (
         "Write and execute a Python script. Use for custom logic: "
@@ -20,9 +24,19 @@ class PythonExecTool(Tool):
     binary = sys.executable
 
     def is_available(self) -> bool:
+        """Return True unconditionally since the current interpreter is used."""
         return True
 
     async def run(self, **kwargs: Any) -> ToolResult:
+        """Write *code* to a temp file and execute it.
+
+        Args:
+            **kwargs: Must include ``code`` (str).  Optional ``timeout``
+                (int, seconds, capped at 300).
+
+        Returns:
+            A ToolResult with the script's stdout, stderr, and exit code.
+        """
         log = get_logger(f"tool.{self.name}")
 
         code: str = kwargs["code"]

@@ -1,3 +1,5 @@
+"""Report generation in Markdown and PDF formats."""
+
 from datetime import datetime, timezone
 from pathlib import Path
 

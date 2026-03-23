@@ -1,3 +1,5 @@
+"""High-level attack planner that orchestrates the attack tree and search trees."""
+
 from __future__ import annotations
 
 from urllib.parse import urlparse
@@ -16,6 +18,12 @@ class AttackPlanner:
     """Manage the attack tree as an agent-driven priority queue."""
 
     def __init__(self, target: str, scope: str) -> None:
+        """Initialize the planner with target info and build the initial attack tree.
+
+        Args:
+            target: The target URL or hostname.
+            scope: Scope description constraining the engagement.
+        """
         self.target = target
         self.scope = scope
         self.tree = AttackTree()
@@ -29,6 +37,7 @@ class AttackPlanner:
         self._build_initial_tree()
 
     def _build_initial_tree(self) -> None:
+        """Populate the attack tree with baseline recon, discovery, and misconfig tasks."""
         t = self.tree
         is_single = self._is_single_url()
 
@@ -95,6 +104,7 @@ class AttackPlanner:
         )
 
     def _is_single_url(self) -> bool:
+        """Return whether the target looks like a single URL rather than a domain."""
         parsed = urlparse(self.target)
         hostname = parsed.hostname or ""
         return (
@@ -104,6 +114,14 @@ class AttackPlanner:
         )
 
     def next_task(self, iteration: int = 0) -> AttackNode | None:
+        """Return the next task from the attack tree.
+
+        Args:
+            iteration: Current iteration number for timeout tracking.
+
+        Returns:
+            The next AttackNode to execute, or None if none remain.
+        """
         return self.tree.next_task(iteration)
 
     def create_task(
@@ -116,6 +134,23 @@ class AttackPlanner:
         hints: list[str] | None = None,
         iteration: int = 0,
     ) -> AttackNode | None:
+        """Create or update a task in the attack tree.
+
+        If a matching pending node already exists, update its priority and hints
+        instead of creating a duplicate.
+
+        Args:
+            category: Attack category label (e.g. ``"sqli"``).
+            target_url: URL this task targets.
+            description: Human-readable task description.
+            priority: Scheduling priority (capped at 100).
+            phase: Phase name string (defaults to ``"vuln_hunt"``).
+            hints: Optional hints for the agent.
+            iteration: Iteration number when the task is created.
+
+        Returns:
+            The new or updated AttackNode, or None if a duplicate already exists.
+        """
         phase_map: dict[str, Phase] = {
             "recon": Phase.RECON,
             "discovery": Phase.DISCOVERY,
@@ -151,6 +186,11 @@ class AttackPlanner:
         )
 
     def complete_current(self, result: str = "") -> None:
+        """Mark the active task and its search-tree approach as completed.
+
+        Args:
+            result: Optional result summary.
+        """
         active = self.tree.get_active_task()
         if not active:
             return
@@ -162,6 +202,14 @@ class AttackPlanner:
         self.tree.complete_task(active.id, result)
 
     def fail_current(self, result: str = "") -> bool:
+        """Fail the active task, backtracking to the next approach if available.
+
+        Args:
+            result: Description of why the task failed.
+
+        Returns:
+            True if a new search-tree approach was selected (task stays active).
+        """
         active = self.tree.get_active_task()
         if not active:
             return False
@@ -178,15 +226,32 @@ class AttackPlanner:
         return False
 
     def get_active_search_tree(self) -> SearchTree | None:
+        """Return the search tree for the currently active task, if any."""
         active = self.tree.get_active_task()
         return self._search_trees.get(active.id) if active else None
 
     def skip_current(self, reason: str = "") -> None:
+        """Skip the currently active task.
+
+        Args:
+            reason: Optional reason for skipping.
+        """
         active = self.tree.get_active_task()
         if active:
             self.tree.skip_task(active.id, reason)
 
     def get_or_create_search_tree(self, node: AttackNode) -> SearchTree | None:
+        """Return or create a search tree for the given node.
+
+        Search trees are only created for vuln_hunt, exploit, and escalate phases.
+
+        Args:
+            node: The attack node to associate with a search tree.
+
+        Returns:
+            The existing or newly created SearchTree, or None if the phase
+            does not use search trees.
+        """
         if node.phase not in _SEARCH_TREE_PHASES:
             return None
         if node.id in self._search_trees:
@@ -204,6 +269,12 @@ class AttackPlanner:
         return stree
 
     def perceive(self, tracker: AttackTracker, iteration: int) -> None:
+        """Observe tracker events and update tree state accordingly.
+
+        Args:
+            tracker: The attack tracker containing recent events.
+            iteration: Current iteration number for timeout checks.
+        """
         self._process_completions(tracker)
         self._update_tech_and_waf(tracker)
 
@@ -212,6 +283,7 @@ class AttackPlanner:
         self.tree.check_task_timeout(iteration, budget=budget)
 
     def _process_completions(self, tracker: AttackTracker) -> None:
+        """Process new tracker events and auto-complete tasks on success signals."""
         events = tracker._events[self._processed_event_count :]
         self._processed_event_count = len(tracker._events)
 
@@ -243,12 +315,21 @@ class AttackPlanner:
                     return
 
     def _update_tech_and_waf(self, tracker: AttackTracker) -> None:
+        """Refresh the detected tech stack and WAF status from the tracker."""
         for techs in tracker.get_tech_summary().values():
             self._tech_stack.update(t.lower() for t in techs)
         if not self._waf_detected and tracker.get_waf_info():
             self._waf_detected = True
 
     def build_directive(self, iteration: int = 0) -> str:
+        """Build a markdown directive describing the current objective for the agent.
+
+        Args:
+            iteration: Current iteration number.
+
+        Returns:
+            A formatted markdown string, or an empty string if no tasks remain.
+        """
         active = self.tree.get_active_task() or self.next_task(iteration)
         if not active:
             return ""

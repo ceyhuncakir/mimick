@@ -9,7 +9,7 @@ import uvicorn
 from dotenv import load_dotenv
 from rich.console import Console
 
-from mimick.agent.core import run_agent
+from mimick.agent.runner import run_agent
 from mimick.benchmark.runner import (
     discover_benchmarks,
     filter_benchmarks,

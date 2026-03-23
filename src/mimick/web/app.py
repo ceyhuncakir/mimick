@@ -1,3 +1,5 @@
+"""FastAPI web application for browsing Mimick run results."""
+
 from __future__ import annotations
 
 import json
@@ -11,20 +13,31 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 
 def create_app(results_dir: Path) -> FastAPI:
+    """Create and configure the FastAPI application.
+
+    Args:
+        results_dir: Directory containing JSON run result files.
+
+    Returns:
+        Configured FastAPI application instance.
+    """
     app = FastAPI(title="Mimick", docs_url=None, redoc_url=None)
 
     def _find_all_json() -> list[Path]:
+        """Return all JSON result files sorted newest first."""
         if not results_dir.is_dir():
             return []
         return sorted(results_dir.rglob("mimick_*.json"), reverse=True)
 
     def _find_json(run_id: str) -> Path | None:
+        """Find a single JSON result file by run ID."""
         for f in results_dir.rglob(f"{run_id}.json"):
             return f
         return None
 
     @app.get("/api/runs")
     def list_runs() -> list[dict]:
+        """Return summary metadata for all available runs."""
         runs = []
         for f in _find_all_json():
             try:
@@ -47,6 +60,7 @@ def create_app(results_dir: Path) -> FastAPI:
 
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> dict:
+        """Return the full JSON data for a single run."""
         path = _find_json(run_id)
         if not path:
             raise HTTPException(404, f"Run '{run_id}' not found")
@@ -54,6 +68,7 @@ def create_app(results_dir: Path) -> FastAPI:
 
     @app.get("/")
     def index() -> HTMLResponse:
+        """Serve the single-page application index."""
         html = (STATIC_DIR / "index.html").read_text()
         return HTMLResponse(html)
 

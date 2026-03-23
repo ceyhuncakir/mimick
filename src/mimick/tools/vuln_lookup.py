@@ -1,3 +1,5 @@
+"""Vulnerability knowledge-base lookup tool with alias resolution."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -82,6 +84,7 @@ ALIASES: dict[str, str] = {
 
 
 def _list_categories() -> list[str]:
+    """Return sorted names of all category directories under the docs tree."""
     if not DOCS_DIR.is_dir():
         return []
     return sorted(
@@ -90,6 +93,17 @@ def _list_categories() -> list[str]:
 
 
 def _find_category(query: str) -> Path | None:
+    """Resolve a user query to a category directory path.
+
+    Try alias lookup first, then exact name match, substring match, and
+    finally word-overlap scoring.
+
+    Args:
+        query: Free-text vulnerability category name or alias.
+
+    Returns:
+        The matching category directory, or None if no match is found.
+    """
     q = query.lower().strip()
 
     if q in ALIASES:
@@ -126,6 +140,7 @@ def _find_category(query: str) -> Path | None:
 
 
 def _find_subfile(category_dir: Path, query: str) -> Path | None:
+    """Find a markdown file inside *category_dir* matching *query* by stem substring."""
     q = query.lower().strip()
     md_files = list(category_dir.glob("*.md"))
 
@@ -139,6 +154,7 @@ def _find_subfile(category_dir: Path, query: str) -> Path | None:
 
 
 def _read_md(path: Path, max_chars: int = 30000) -> str:
+    """Read a markdown file, truncating beyond *max_chars*."""
     text = path.read_text(errors="replace")
     if len(text) <= max_chars:
         return text
@@ -148,6 +164,8 @@ def _read_md(path: Path, max_chars: int = 30000) -> str:
 
 
 class VulnLookupTool(Tool):
+    """Look up vulnerability cheatsheets, payloads, and bypass techniques."""
+
     name = "vuln_lookup"
     description = (
         "Search the vulnerability knowledge base for payloads, exploitation "
@@ -159,9 +177,20 @@ class VulnLookupTool(Tool):
     binary = ""
 
     def is_available(self) -> bool:
+        """Return True when the docs directory exists on disk."""
         return DOCS_DIR.is_dir()
 
     async def run(self, **kwargs: Any) -> ToolResult:
+        """Search the knowledge base for the given vulnerability query.
+
+        Args:
+            **kwargs: Must include ``query`` (str).  Optional ``subtopic``
+                (str) to narrow the search within a category.
+
+        Returns:
+            A ToolResult containing the matching documentation or an error
+            listing available categories.
+        """
         query: str = kwargs["query"]
         subtopic: str | None = kwargs.get("subtopic")
 

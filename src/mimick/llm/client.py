@@ -1,3 +1,5 @@
+"""LLM client helpers for model resolution and cache configuration."""
+
 from __future__ import annotations
 
 import os
@@ -14,6 +16,7 @@ log = get_logger("llm")
 
 
 def _is_anthropic_model(model_str: str) -> bool:
+    """Determine whether the model string refers to an Anthropic model."""
     lower = model_str.lower()
     return "claude" in lower or "anthropic" in lower
 

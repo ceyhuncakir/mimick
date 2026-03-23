@@ -1,3 +1,5 @@
+"""Attack-graph tracker that records tool calls and discoveries."""
+
 from __future__ import annotations
 
 import json
@@ -10,6 +12,8 @@ from typing import Any
 
 @dataclass
 class GraphNode:
+    """Represent a single node in the attack graph."""
+
     id: str
     type: str
     label: str
@@ -18,6 +22,8 @@ class GraphNode:
 
 @dataclass
 class GraphEdge:
+    """Represent a directed edge between two graph nodes."""
+
     source: str
     target: str
     label: str = ""
@@ -27,6 +33,14 @@ class AttackTracker:
     """Records tool calls and discoveries as a directed attack graph."""
 
     def __init__(self, run_id: str, target: str, scope: str, prompt: str = "") -> None:
+        """Initialize the tracker with run metadata and an empty graph.
+
+        Args:
+            run_id: Unique identifier for this run.
+            target: Primary target host or URL.
+            scope: Scope definition string.
+            prompt: Optional user prompt that initiated the run.
+        """
         self.run_id = run_id
         self.target = target
         self.scope = scope
@@ -48,23 +62,35 @@ class AttackTracker:
         self._add_node(GraphNode("target", "target", target, {"scope": scope}))
 
     def _add_node(self, node: GraphNode) -> str:
+        """Add a node to the graph if it does not already exist.
+
+        Args:
+            node: The graph node to add.
+
+        Returns:
+            The node's id.
+        """
         if node.id not in self._node_ids:
             self._nodes.append(node)
             self._node_ids.add(node.id)
         return node.id
 
     def _add_edge(self, source: str, target: str, label: str = "") -> None:
+        """Append a directed edge to the graph."""
         self._edges.append(GraphEdge(source, target, label))
 
     def _make_asset_id(self, label: str) -> str:
+        """Generate a deterministic asset node id from a label string."""
         safe = re.sub(r"[^a-zA-Z0-9._:-]", "_", label)[:80]
         return f"asset_{safe}"
 
     def _make_finding_id(self) -> str:
+        """Generate a unique finding node id."""
         self._finding_seq += 1
         return f"finding_{self._finding_seq}"
 
     def record_reasoning(self, text: str, iteration: int) -> None:
+        """Record an LLM reasoning event."""
         self._events.append(
             {
                 "type": "reasoning",
@@ -83,6 +109,16 @@ class AttackTracker:
         success: bool,
         iteration: int,
     ) -> None:
+        """Record a tool invocation and extract any discovered assets.
+
+        Args:
+            tool_name: Name of the tool that was called.
+            args: Arguments passed to the tool.
+            stdout: Standard output captured from the tool.
+            stderr: Standard error captured from the tool.
+            success: Whether the tool exited successfully.
+            iteration: Current agent iteration number.
+        """
         self._events.append(
             {
                 "type": "tool_call",
@@ -130,6 +166,7 @@ class AttackTracker:
             self._extract(action_id, tool_name, args, stdout)
 
     def is_duplicate_finding(self, url: str, title: str) -> bool:
+        """Return True if a finding with the same normalized URL and title was already recorded."""
         norm_url = re.sub(r"https?://", "", url).rstrip("/").lower()
         norm_title = re.sub(
             r"^(reflected|stored|blind|dom[- ]based)\s+",
@@ -155,6 +192,20 @@ class AttackTracker:
         iteration: int = 0,
         vuln_type: str = "",
     ) -> None:
+        """Record a security finding and link it to the graph.
+
+        Args:
+            title: Short title of the finding.
+            severity: Severity level (e.g. "high", "medium", "low", "info").
+            url: Affected URL.
+            description: Detailed description of the vulnerability.
+            proof: Proof-of-concept output or payload.
+            reproduction: List of reproduction step dicts.
+            impact: Description of potential impact.
+            remediation: Suggested fix.
+            iteration: Agent iteration that produced this finding.
+            vuln_type: Vulnerability class label.
+        """
         fid = self._make_finding_id()
         self._add_node(
             GraphNode(
@@ -198,10 +249,12 @@ class AttackTracker:
         )
 
     def finish(self, status: str = "completed") -> None:
+        """Mark the run as finished with the given status."""
         self.finished_at = datetime.now(timezone.utc).isoformat()
         self.status = status
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the full attack graph and event log to a dict."""
         stats = {"iterations": self._action_seq}
         type_counts: dict[str, int] = {}
         for n in self._nodes:
@@ -223,12 +276,14 @@ class AttackTracker:
         }
 
     def save(self, output_dir: Path) -> Path:
+        """Write the attack graph JSON to *output_dir* and return the file path."""
         output_dir.mkdir(parents=True, exist_ok=True)
         path = output_dir / f"{self.run_id}.json"
         path.write_text(json.dumps(self.to_dict(), indent=2))
         return path
 
     def _resolve_parent(self, tool_name: str, args: dict[str, Any]) -> str:
+        """Resolve the parent node for a tool action based on its target argument."""
         target_val = (
             args.get("target")
             or args.get("host")
@@ -242,6 +297,7 @@ class AttackTracker:
         return "target"
 
     def _extract(self, action_id: str, tool_name: str, args: dict, stdout: str) -> None:
+        """Dispatch to a tool-specific extractor to harvest discovered assets."""
         extractors = {
             "subfinder": self._extract_subfinder,
             "httpx": self._extract_httpx,
@@ -260,6 +316,7 @@ class AttackTracker:
             fn(action_id, args, stdout)
 
     def _extract_subfinder(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract discovered subdomains from subfinder output."""
         hosts = [
             line.strip() for line in stdout.splitlines() if line.strip() and "." in line
         ]
@@ -275,6 +332,7 @@ class AttackTracker:
             self._add_edge(action_id, nid, "found")
 
     def _extract_httpx(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract probed hosts and technology info from httpx JSON output."""
         for line in stdout.splitlines()[:30]:
             try:
                 obj = json.loads(line)
@@ -298,6 +356,7 @@ class AttackTracker:
             self._add_edge(action_id, nid, "probed")
 
     def _extract_nuclei(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract findings from nuclei JSON output."""
         for line in stdout.splitlines():
             try:
                 obj = json.loads(line)
@@ -327,6 +386,7 @@ class AttackTracker:
                     self._add_edge(asset_id, fid, "vulnerable")
 
     def _extract_katana(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract crawled endpoint URLs from katana output."""
         urls = [
             line.strip()
             for line in stdout.splitlines()
@@ -344,6 +404,7 @@ class AttackTracker:
             self._add_edge(action_id, nid, "crawled")
 
     def _extract_ffuf(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract fuzzed endpoints from ffuf JSON output."""
         for line in stdout.splitlines()[:30]:
             try:
                 obj = json.loads(line)
@@ -366,6 +427,7 @@ class AttackTracker:
                 self._add_edge(action_id, nid, "fuzzed")
 
     def _extract_nmap(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract open ports and services from nmap output."""
         for m in re.finditer(r"(\d+)/(\w+)\s+open\s+(\S+)", stdout):
             port, proto, service = m.groups()
             label = f"{args.get('target', '?')}:{port}/{service}"
@@ -385,6 +447,7 @@ class AttackTracker:
             self._add_edge(action_id, nid, "open")
 
     def _extract_wafw00f(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract detected WAF name from wafw00f output."""
         lower = stdout.lower()
         if "is behind" in lower:
             m = re.search(r"is behind\s+(.+?)(?:\s+WAF|\n|$)", stdout, re.IGNORECASE)
@@ -400,6 +463,7 @@ class AttackTracker:
             self._add_edge(action_id, nid, "detected")
 
     def _extract_curl(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract the requested endpoint from curl arguments."""
         url = args.get("url", "")
         if url:
             nid = self._add_node(
@@ -413,6 +477,7 @@ class AttackTracker:
             self._add_edge(action_id, nid, "requested")
 
     def _extract_arjun(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract discovered HTTP parameters from arjun JSON output."""
         try:
             obj = json.loads(stdout)
         except json.JSONDecodeError:
@@ -433,6 +498,7 @@ class AttackTracker:
                     self._add_edge(action_id, nid, "discovered")
 
     def _extract_sqlmap(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract SQL injection findings from sqlmap output."""
         lower = stdout.lower()
         if "is vulnerable" in lower or "injectable" in lower:
             url = args.get("url", "?")
@@ -458,6 +524,7 @@ class AttackTracker:
                     self._add_edge(asset_id, fid, "vulnerable")
 
     def _extract_dalfox(self, action_id: str, args: dict, stdout: str) -> None:
+        """Extract XSS findings from dalfox JSON output."""
         for line in stdout.splitlines():
             try:
                 obj = json.loads(line)
@@ -491,6 +558,7 @@ class AttackTracker:
                         self._add_edge(asset_id, fid, "vulnerable")
 
     def get_tech_summary(self) -> dict[str, list[str]]:
+        """Return a mapping of asset labels to their detected technologies."""
         tech_map: dict[str, list[str]] = {}
         for node in self._nodes:
             if node.type != "asset":
@@ -511,6 +579,7 @@ class AttackTracker:
         return tech_map
 
     def get_waf_info(self) -> list[str]:
+        """Return a list of detected WAF names."""
         return [
             node.data.get("waf", "Unknown")
             for node in self._nodes
@@ -518,6 +587,7 @@ class AttackTracker:
         ]
 
     def get_discovered_endpoints(self) -> list[str]:
+        """Return labels of all discovered endpoint and host assets."""
         return [
             node.label
             for node in self._nodes
@@ -525,6 +595,7 @@ class AttackTracker:
         ]
 
     def get_findings_summary(self) -> list[dict[str, str]]:
+        """Return a list of finding summaries with title, severity, and URL."""
         return [
             {
                 "title": node.label,
@@ -536,6 +607,7 @@ class AttackTracker:
         ]
 
     def get_discovered_params(self) -> dict[str, list[str]]:
+        """Return a mapping of URLs to their discovered parameter names."""
         return {
             node.data["url"]: node.data.get("params", [])
             for node in self._nodes
@@ -545,10 +617,12 @@ class AttackTracker:
         }
 
     def node_count(self) -> int:
+        """Return the total number of nodes in the graph."""
         return len(self._nodes)
 
 
 def _sanitize_args(args: dict) -> dict:
+    """Truncate oversized string values in a tool-args dict."""
     clean = {}
     for k, v in args.items():
         if isinstance(v, str) and len(v) > 500:

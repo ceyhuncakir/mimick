@@ -1,3 +1,5 @@
+"""Classify agent actions into human-readable strategy descriptions."""
+
 from __future__ import annotations
 
 import re
@@ -43,6 +45,15 @@ _PYTHON_KEYWORDS: list[tuple[str, str]] = [
 
 
 def _find_cli_flag(parts: list[str], flag: str) -> str:
+    """Return the value associated with *flag* in a tokenised command line.
+
+    Args:
+        parts: Shell-split command tokens.
+        flag: The flag whose value to look up (e.g. ``"--level"``).
+
+    Returns:
+        The flag's value, or an empty string if the flag is absent.
+    """
     for i, p in enumerate(parts):
         if p == flag and i + 1 < len(parts):
             return parts[i + 1]
@@ -52,6 +63,15 @@ def _find_cli_flag(parts: list[str], flag: str) -> str:
 
 
 def extract_from_command(command: str) -> str:
+    """Derive a strategy description from a raw shell command string.
+
+    Args:
+        command: The full shell command to analyse.
+
+    Returns:
+        A short human-readable label describing the attack strategy,
+        or an empty string for non-attack commands.
+    """
     try:
         parts = shlex.split(command)
     except ValueError:
@@ -94,6 +114,15 @@ def extract_from_command(command: str) -> str:
 
 
 def extract_from_tool_call(tool_name: str, args: dict[str, Any]) -> str:
+    """Derive a strategy description from a structured tool invocation.
+
+    Args:
+        tool_name: Name of the tool being called.
+        args: Keyword arguments passed to the tool.
+
+    Returns:
+        A short human-readable label describing the attack strategy.
+    """
     if tool_name == "sqlmap":
         level, risk = args.get("level", 1), args.get("risk", 1)
         tamper = args.get("tamper", "")
@@ -135,5 +164,13 @@ def extract_from_tool_call(tool_name: str, args: dict[str, Any]) -> str:
 
 
 def extract_url_from_command(command: str) -> str:
+    """Extract the first HTTP(S) URL found in a shell command.
+
+    Args:
+        command: The raw shell command string.
+
+    Returns:
+        The matched URL, or an empty string if none is found.
+    """
     match = re.search(r"https?://[^\s'\"]+", command)
     return match.group(0) if match else ""
